@@ -19,6 +19,7 @@ NO = re.compile(r"\bnah\b|not really|not for me|pass\b|can't do|cannot|not into|
 TIMING = re.compile(r"can't do|cannot do|wrong day|that day|too soon|busy then|another day|different day|not free", re.I)
 SPECIFICS = re.compile(r"more into|not that kind|not my kind|too expensive|somewhere else|different (place|venue|event)|not my thing|rather do", re.I)
 SIGNAL = {"activity": 0.0, "timing": 0.8, "specifics": 0.7}
+PLANS = ("propose", "ask")  # an "ask" for call times usually suggests one too, so a yes to it is a plan
 
 
 def reason(text: str) -> str:
@@ -26,7 +27,7 @@ def reason(text: str) -> str:
 
 
 def _open_item(history: list[dict]) -> dict | None:
-    items = [b for b in history if b["kind"] in ("propose", "probe") and b.get("activity")]
+    items = [b for b in history if b["kind"] in ("propose", "probe", "ask") and b.get("activity")]
     return items[-1] if items and not items[-1].get("closed") else None
 
 
@@ -47,8 +48,8 @@ def on_reply(brain: Brain, msg: dict, history: list[dict]) -> list[str]:
     members = max(len(brain.people()), 1)
     yeses = sum(item["voters"].values())
     nos = len(item["voters"]) - yeses
-    # A plan happens when enough people are in, like a real group: at least 2 (or everyone) and more yes than no.
-    if item["kind"] == "propose" and yeses >= min(2, members) and yeses > nos:
+    # A plan happens when enough people are in, like a real group: at least 2 and more yes than no.
+    if item["kind"] in PLANS and yeses >= 2 and yeses > nos:  # a hangout needs at least two people, however few we know
         item["closed"] = item["confirmed"] = True
         interests.mark(brain, item["activity"], "last_done", msg["ts"])
         g = brain.facts("group")

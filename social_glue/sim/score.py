@@ -20,6 +20,7 @@ from collections import Counter
 from datetime import datetime
 
 from social_glue.agents.interests import DEFAULT_CADENCE
+from social_glue.agents.tracker import PLANS
 from social_glue.agents.values import normalize
 
 
@@ -47,7 +48,7 @@ def score(episode: dict) -> dict:
     g, days = episode["group"], episode["days"]
     start = datetime.fromisoformat(episode["start"])
     day_of = lambda ts: (datetime.fromisoformat(ts) - start).days  # noqa: E731
-    proposals = [b for b in episode["bot_messages"] if b["kind"] == "propose" and b.get("activity")]
+    proposals = [b for b in episode["bot_messages"] if b["kind"] in PLANS and b.get("activity")]
     probes = [b for b in episode["bot_messages"] if b["kind"] == "probe"]
 
     cut = g.get("success_cutoff", 7)
