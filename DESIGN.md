@@ -60,10 +60,13 @@ For each activity and each week:
 
 `score = (tp·TP + tn·TN − fp·FP − fn·FN) / decisions − msg × bot messages`
 
-- The outcome values are **free parameters per group**, in `brain/values.md`. Defaults follow "hangouts are rare and valuable": tp 1.0 > fn 0.6 > fp 0.3 > tn 0.05, and msg 0.005.
+- The outcome values are **free parameters per group**. Defaults follow "hangouts are rare and valuable": tp 1.0 > fn 0.6 > fp 0.3 > tn 0.05, and msg 0.005.
 - **The message penalty is deliberately light.** A burst of back-and-forth to plan a trip is fine.
-- The values are learned from what the group says ("that was so fun" raises tp, "it's been forever" raises fn, "too many pings" raises fp and msg).
-- **The reflector can't edit the values**, only behavior. Otherwise the N+1 loop could raise its score by lowering the costs it's judged on.
+- **There are at least two sets of values:**
+  - **True values:** what outcomes are really worth to the group. We never observe them, and they may be undiscoverable by nature, since this is a framework rather than a measurement. In the simulator they're hidden in the group JSON and used only to score.
+  - **Operating estimates:** `brain/values.md`, our best guess at the true values. These drive what the bot does, and we want them to improve over time.
+- **How to update the estimates is an open question** (see below). Today's rule is a placeholder: phrases in the chat nudge them ("that was so fun" raises tp, "it's been forever" raises fn, "too many pings" raises fp and msg).
+- For now the reflector edits only the playbook, not the estimates, so the N+1 loop can't raise its score by changing what it's judged on. How this fits with learning the estimates is part of the open question.
 - The values also drive decisions. The bot proposes when its interest estimate exceeds `(fp + tn) / (tp + fn + fp + tn)`, the point where proposing has the higher expected value. A group that values hangouts more gets a bolder bot.
 - **Rejected along the way:** an "annoyance" term (too loaded), plain accuracy (rewards silence, since most cells are TNs), and balanced accuracy (locks in fixed 50/50 weights).
 
@@ -96,6 +99,13 @@ Proposed and parked for now: find_common_time, search_events, poll, propose_and_
 
 ## Open questions
 
-- Should the outcome values also be learned from explicit questions ("how did that go, 1–5?") rather than only from chat phrases?
+- **How should the operating value estimates be updated?** We need a framework for this. Some candidates:
+  - chat signals (today's placeholder)
+  - explicit questions ("how did that go, 1–5?")
+  - revealed preference (what the group says yes to, and how fast)
+  - Bayesian updating with a prior per value
+  - letting the N+1 loop propose value changes, judged against something it doesn't control
+
+  Related: what do we score against outside the simulator, where true values don't exist?
 - The values-derived propose threshold is low with the defaults (0.18), so trips get proposed without a probe. Do we want a separate "big ask" rule for trips?
 - Real Crusoe numbers: the "First real Crusoe run" thread is producing them. Update this file with the v0 vs vN table when they land.
