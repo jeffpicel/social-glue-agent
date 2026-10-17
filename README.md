@@ -24,5 +24,5 @@ python -m social_glue.bot   # scripted 5-message chat through listener -> curato
 
 python -m social_glue.sim.run --group train_1          # simulated 2-week group chat, brain/ updates live
 python -m social_glue.sim.run --group heldout_1 --no-brain
-python -m social_glue.evolve --rounds 2                # reflect on train, keep playbook edits that help, held-out table -> results/
+python -m social_glue.evolve --all --rounds 3          # per group: reflect, keep playbook edits that help, v0 vs vN on unseen runs -> results/
 ```

@@ -1,29 +1,48 @@
-"""Reflector: reads a scored episode and rewrites playbook.md (the Version N+1 step)."""
+"""Reflector: reads scored episodes and rewrites playbook.md (the Version N+1 step)."""
 import re
 
 from social_glue import llm
 
-SYSTEM = """You tune the policy of Glue, a bot in a friends' group chat that plans hangouts.
-You get the current playbook, an episode transcript, and its score (plan_quality up is good, annoyance up is bad).
-Rewrite the playbook to score better next time: adjust max_ignored_nudges_per_week, when to ask vs propose, tone.
-Keep the numeric lines (max_ignored_nudges_per_week, nudge_after_quiet_days, overdue_nudge_after_quiet_days, target_meetup_every_days) since code reads them, and the markdown bullet format. Return only the new playbook."""
+SYSTEM = """You tune the policy of Glue, a bot in a friends' group chat that proposes calls, events and trips.
+You get the current playbook, a transcript, and its score: a confusion matrix over (activity, week) decisions.
+- FP = proposed and declined; fp_reasons says why (activity = wrong kind of hangout, timing = wrong day/too soon,
+  specifics = wrong event/place/price, ignored = nobody answered).
+- FN = the group wanted an activity and we never offered it; fn_reasons says why (unexplored = never probed a low
+  belief, misread = probed but belief stayed low, nudge_budget / waiting_for_quiet / no_availability = wanted to
+  propose but a gate blocked it, not_due = cadence too long).
+- annoyance = people irritated by out-of-the-blue messages.
+Change the knobs and style lines to raise F1 and cut annoyance. Keep every "- key: number" knob line (code parses them)
+and the markdown format. Return only the new playbook."""
 
 
-def _bump(playbook: str, key: str, delta: int) -> str:
-    m = re.search(rf"{key}:\s*(\d+)", playbook)
-    return playbook.replace(m.group(0), f"{key}: {int(m.group(1)) + delta}") if m else playbook
+def _set(playbook: str, key: str, fn) -> str:
+    m = re.search(rf"{key}:\s*([\d.]+)", playbook)
+    if not m:
+        return playbook
+    old = float(m.group(1))
+    new = fn(old)
+    new = int(new) if float(new).is_integer() else round(new, 2)
+    return playbook.replace(m.group(0), f"{key}: {new}")
 
 
 def _fake(playbook: str, s: dict) -> str:
-    m = re.search(r"max_ignored_nudges_per_week:\s*(\d+)", playbook)
-    n = int(m.group(1)) if m else 3
+    """Offline stand-in: simple rules over the same signals the model sees."""
+    reasons = s.get("fp_reasons", {})
     if s["annoyance"] > 0:
-        playbook = playbook.replace(f"max_ignored_nudges_per_week: {n}", f"max_ignored_nudges_per_week: {max(1, n // 2)}")
-        playbook = _bump(_bump(playbook, "nudge_after_quiet_days", 1), "overdue_nudge_after_quiet_days", 1)
-        if "Batch" not in playbook:
-            playbook += "- Batch: one message that asks everyone missing info at once beats several one-person questions.\n"
-    elif s["plan_quality"] < 0.7 and n < 6:
-        playbook = playbook.replace(f"max_ignored_nudges_per_week: {n}", f"max_ignored_nudges_per_week: {n + 1}")
+        playbook = _set(playbook, "max_ignored_nudges_per_week", lambda v: max(1, v // 2))
+        playbook = _set(playbook, "propose_after_quiet_days", lambda v: v + 1)
+        playbook = _set(playbook, "repropose_after_days", lambda v: v + 2)
+    if reasons.get("activity", 0) >= max(reasons.get("timing", 0), reasons.get("specifics", 0), 1):
+        playbook = _set(playbook, "probe_below", lambda v: min(0.6, v + 0.1))
+    fn = s.get("fn_reasons", {})
+    if fn.get("unexplored", 0):
+        playbook = _set(playbook, "probe_every_days", lambda v: max(2, v - 2))
+    if fn.get("misread", 0):
+        playbook = _set(playbook, "learning_rate", lambda v: min(0.6, v + 0.1))
+    if fn.get("waiting_for_quiet", 0):
+        playbook = _set(playbook, "propose_after_quiet_days", lambda v: max(0, v - 1))
+    if fn.get("nudge_budget", 0) and s["annoyance"] == 0:
+        playbook = _set(playbook, "max_ignored_nudges_per_week", lambda v: v + 1)
     return playbook
 
 

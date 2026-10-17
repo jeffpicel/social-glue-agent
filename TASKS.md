@@ -40,12 +40,20 @@ Two paths share the brain:
 - Timer: `on_tick` each evening → governor weighs days since the last meetup (vs. `target_meetup_every_days`) first and chat silence second, within the weekly budget → planner proposes (or asks if it can't propose yet).
 - Meetups: `agents/tracker.py` marks a plan confirmed when a majority says yes and writes `last_meetup` to `group.md`.
 
+## Design (agreed with Jeff, 3:00 PM)
+
+- **Interest sliders, not group types.** `brain/interests.md` holds a 0–1 slider per activity (call, event, trip). High sliders are exploited (propose when due by cadence); low sliders get occasional light probes, since otherwise we'd never get feedback. Groups drift, so probing never fully stops.
+- **Every "no" has a reason** (activity / timing / specifics) and updates the right thing: the slider, availability, or tastes.
+- **Score = confusion matrix over (activity, week):** TP proposed and taken, FP proposed and declined (with reason), FN wanted but never offered (with reason: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, not_due), TN. `score = F1 − 0.1 × annoyance`.
+- **Version N+1 is per group:** a group's playbook improves from its own history; proof is v0 vs vN on fresh, unseen simulated runs of that group. No cross-group learning.
+- **Timer path initiates, chat path reacts.** `on_tick` proposes/probes; `on_message` answers and fills gaps.
+
 ## Interface contract (frozen; change only after telling the other person)
 
 - `Bot.on_message(msg: dict) -> str | None` where `msg = {name, text, ts}`
 - `Bot.on_tick(now: str) -> str | None`: called on a clock; lets the bot restart a quiet chat (playbook `nudge_after_quiet_days`)
 - `Persona.reply(chat: list[dict]) -> dict` returning `{name, text, reaction}` (`reaction` in `none | annoyed | muted`)
-- `score(episode) -> dict` returning `plan_quality`, `annoyance`, `cost`, `score`
+- `score(episode) -> dict` returning `score`, `f1`, `precision`, `recall`, `tp/fp/fn/tn`, `fp_reasons`, `fn_reasons`, `annoyance`, `cost`
 - Brain fact shape: `{value, source_msg, ts, confidence}`
 
 ## Board
@@ -60,13 +68,13 @@ Two paths share the brain:
 | 3:30–4:00 | Thin sim: 3 group JSONs (1 train, 2 heldout), `personas.py`, `run.py` | Claude | done (offline) |
 | 3:30–4:00 | `score.py` + `--no-brain` baseline | Claude | done (offline) |
 | 4:00–4:15 | `reflector.py` + `evolve.py` (one round), save results table | Claude | code done; real run needs Crusoe keys |
-| next | Run `python -m social_glue.evolve` on Crusoe, commit `results/` | Jeff | todo |
+| next | Run `python -m social_glue.evolve --all` on Crusoe, commit `results/` | Jeff | todo |
 | 4:15–4:30 | README: what was built today, how to run | Jeff | todo |
 | 4:15–4:30 | Record 1-min video | Thomas | todo |
 | 4:35–4:45 | Submit (repo public, video, both members) | Jeff | todo |
 | side | Discord as the live home for the bot: adapter that calls `Bot.on_message` per message and `Bot.on_tick` on a timer (e.g. every hour), one `brain/` dir per channel | Thomas | doing (Thomas) |
 
-**Cut list if behind** (in order): trip proposals, live You.com calls (cached only), heldout drops to 1 group, evolve becomes a hand-shown playbook diff. **Never cut** the playbook v0 vs vN number on held-out groups.
+**Cut list if behind** (in order): trip proposals, live You.com calls (cached only), heldout drops to 1 group, evolve becomes a hand-shown playbook diff. **Never cut** the v0 vs vN table on unseen runs.
 
 ## Log
 
@@ -79,3 +87,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 15:15 Claude: timer now driven by time since last meetup; tracker records confirmed plans; annoyance is per-week. Offline evolve run keeps a playbook edit that cuts held-out annoyance 4.5 -> 0.
 - 15:25 Claude: budget now counts only ignored nudges (`max_ignored_nudges_per_week`), so busy planning weeks aren't capped; pitch reframed to Version N+1 first.
 - 15:30 Claude: Thomas is on a Discord deployment; the adapter only needs `Bot.on_message` and `Bot.on_tick`.
+- 15:05 Claude: interest sliders (explore/exploit), decline reasons, confusion-matrix score with FP/FN reasons, per-group N+1 loop. Offline: vN cuts annoyance a lot but recall stays low; real numbers need Crusoe.

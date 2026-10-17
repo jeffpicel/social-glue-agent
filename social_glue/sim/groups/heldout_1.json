@@ -69,5 +69,10 @@
     }
   ],
   "id": "heldout_1",
-  "days_since_last_meetup": 30
+  "appetite": {
+    "call": 0.1,
+    "event": 0.9,
+    "trip": 0.3
+  },
+  "drift": {}
 }

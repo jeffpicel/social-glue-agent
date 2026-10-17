@@ -51,15 +51,17 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
     if playbook:
         bot.brain.playbook = playbook
     start = datetime(2026, 10, 1, 18)
-    setup = lambda v: {"value": v, "source_msg": "setup", "ts": start.isoformat(), "confidence": 1.0}  # noqa: E731
-    gfacts = {"location": setup(group["city"])}
-    if "days_since_last_meetup" in group:
-        gfacts["last_meetup"] = setup((start - timedelta(days=group["days_since_last_meetup"])).isoformat())
-    bot.brain.write("group", gfacts)
-    personas = [Persona(m, rng) for m in group["members"]]
+    bot.brain.write("group", {"location": {"value": group["city"], "source_msg": "setup", "ts": start.isoformat(), "confidence": 1.0}})
+    appetite = dict(group["appetite"])  # shared by all personas; drift mutates it mid-episode
+    personas = [Persona(m, rng, appetite) for m in group["members"]]
     color = {p.name: COLORS[i % len(COLORS)] for i, p in enumerate(personas)}
     chat, reactions = [], []
     for day in range(days):
+        for a, (when, level) in group.get("drift", {}).items():
+            if day == when:
+                appetite[a] = level
+                if verbose:
+                    note(f"[hidden] group appetite for {a}s is now {level}")
         quiet = rng.random() < 0.4  # some days nobody talks; the bot's timer path has to notice
         for turn in range(0 if quiet else 2):
             p = rng.choice(personas)
@@ -80,12 +82,16 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
                     show("Glue", text, "bold red")
         tick = (start + timedelta(days=day, hours=3)).isoformat()
         text = bot.on_tick(tick)
+        if verbose:
+            for n in bot.last_notes:
+                note(f"[brain] {n}")
         if text:
             chat.append({"name": "Glue", "text": text, "ts": tick})
             if verbose:
-                show("Glue", text + "  (after a quiet stretch)", "bold red")
+                show("Glue", text + f"  ({bot.history[-1]['kind']}: {bot.history[-1]['activity']})", "bold red")
     episode = {"group": group, "transcript": chat, "reactions": reactions, "bot_messages": bot.history,
-               "usage": dict(llm.USAGE), "playbook": bot.brain.playbook, "meetups": bot.meetups}
+               "usage": dict(llm.USAGE), "playbook": bot.brain.playbook, "meetups": bot.meetups,
+               "days": days, "start": start.isoformat(), "decisions": bot.decisions}
     episode["score"] = score(episode)
     return episode
 
