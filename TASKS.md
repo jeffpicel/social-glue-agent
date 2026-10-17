@@ -4,37 +4,67 @@ Shared task board for humans and coding agents. **Read this before starting work
 
 Deadline: submit by **4:45 PM PT** (hard cutoff 5:00).
 
+## Re-scope (2:30 PM)
+
+Thomas is on the Slack bot for team coordination, so the simulator has no owner. Jeff (plus coding agents) now owns the **whole harness**, and the simulator shrinks to the thinnest version that still produces a before/after number. If Thomas frees up, he picks up anything under `sim/` marked `todo`.
+
+**Vision in one breath:** a bot sits in a friend group chat. Every message goes through one pipeline (listen, curate, decide whether to speak, plan). The only memory is the brain folder, never the raw transcript. A playbook file controls how pushy it is, and one reflect step rewrites that playbook from a scored episode.
+
+## Harness structure
+
+```
+social_glue/
+  llm.py            # Crusoe Managed Inference (OpenAI-compatible). FAKE_LLM=1 returns canned JSON so everything runs offline.
+  brain.py          # load/save brain/ files; facts are {value, source_msg, ts, confidence}
+  bot.py            # Bot.on_message(msg) -> str | None : the pipeline below
+  agents/
+    listener.py     # msg -> list of proposed fact patches (cheap model)
+    curator.py      # apply patches, resolve conflicts, drop stale facts; only writer to brain/
+    governor.py     # speak or stay quiet? reads playbook.md + bot message count this week
+    planner.py      # writes the message from brain only; tools: search_events (You.com, cached to disk)
+    reflector.py    # transcript + score -> playbook.md edit
+  sim/
+    groups/*.json   # personas with hidden truth (availability, interests, budget, annoyance_threshold)
+    personas.py     # Persona.reply(chat) -> {name, text, reaction}
+    run.py          # episode loop, prints chat with rich; --no-brain baseline flag
+    score.py        # plan_quality, annoyance, cost, score
+  evolve.py         # one round: run train group, reflect, rerun heldout with new playbook, print table
+brain/
+  people/<name>.md
+  group.md
+  playbook.md
+```
+
+Turn loop: persona message → listener → curator patches brain → governor decides → (if speaking) planner writes from brain → message back into chat.
+
 ## Interface contract (frozen; change only after telling the other person)
 
-- `Bot.on_message(msg: dict) -> str | None`
-- `Persona.reply(chat: list[dict]) -> dict`
+- `Bot.on_message(msg: dict) -> str | None` where `msg = {name, text, ts}`
+- `Persona.reply(chat: list[dict]) -> dict` returning `{name, text, reaction}` (`reaction` in `none | annoyed | muted`)
 - `score(episode) -> dict` returning `plan_quality`, `annoyance`, `cost`, `score`
 - Brain fact shape: `{value, source_msg, ts, confidence}`
 
-## Ownership
-
-- Jeff: `social_glue/llm.py`, `social_glue/brain.py`, `social_glue/agents/`
-- Thomas: `social_glue/sim/`, `social_glue/evolve.py`, `social_glue/agents/reflector.py`
-
 ## Board
 
-| Task | Owner | Status |
-|---|---|---|
-| `llm.py` working against Crusoe | Jeff | todo |
-| Claim credits, You.com key | Thomas | todo |
-| Brain file schema + 1 sample group JSON | Thomas | todo |
-| `brain.py` read / patch / compact | Jeff | todo |
-| `listener.py`, `curator.py` | Jeff | todo |
-| `governor.py`, `planner.py` (+ You.com tool, cached) | Jeff | todo |
-| `personas.py`, `run.py` rich chat loop | Thomas | todo |
-| `score.py`, generate 6 groups (3 train, 3 heldout) | Thomas | todo |
-| End-to-end episode on one group | Jeff | todo |
-| `reflector.py` + `evolve.py` | Thomas | todo |
-| Baseline vs brain, playbook v0 vs vN on heldout; save table | Thomas | todo |
-| README: what was built today, how to run | Jeff | todo |
-| Record 1-min video | Thomas | todo |
-| Submit (repo public, video, both members) | Jeff | todo |
+| Time (PT) | Task | Owner | Status |
+|---|---|---|---|
+| 2:30–2:45 | Agree vision + structure (this file) | Jeff | doing (Jeff) |
+| 2:30–2:45 | Package skeleton, `llm.py` with Crusoe + FAKE_LLM fallback, `brain.py` | Jeff | todo |
+| 2:30–2:45 | Crusoe API key + model ids in `.env`; You.com key | Jeff | todo |
+| 2:45–3:30 | `listener.py`, `curator.py` (incl. one conflict case) | Jeff | todo |
+| 2:45–3:30 | `governor.py`, `planner.py` + cached `search_events` | Jeff | todo |
+| 3:30–4:00 | Thin sim: 3 group JSONs (1 train, 2 heldout), `personas.py`, `run.py` | Jeff / Thomas if free | todo |
+| 3:30–4:00 | `score.py` + `--no-brain` baseline | Jeff / Thomas if free | todo |
+| 4:00–4:15 | `reflector.py` + `evolve.py` (one round), save results table | Jeff | todo |
+| 4:15–4:30 | README: what was built today, how to run | Jeff | todo |
+| 4:15–4:30 | Record 1-min video | Thomas | todo |
+| 4:35–4:45 | Submit (repo public, video, both members) | Jeff | todo |
+| side | Slack bot for team coordination (PR #1) | Thomas | doing (Thomas) |
+
+**Cut list if behind** (in order): trip proposals, live You.com calls (cached only), heldout drops to 1 group, evolve becomes a hand-shown playbook diff. **Never cut** the brain-vs-no-brain number.
 
 ## Log
 
 Append one line per finished task: `HH:MM name: what changed`.
+
+- 14:35 Claude: re-scoped board after Thomas moved to the Slack bot; harness structure written down.
