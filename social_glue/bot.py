@@ -62,8 +62,8 @@ class Bot:
                 note += f" Propose exactly this: {best['option']}."
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
-        if reason in ("propose", "probe"):
-            interests.mark(self.brain, activity, "last_proposed" if reason == "propose" else "last_probe", now)
+        if reason in ("propose", "probe", "ask"):
+            interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
         if best:
             self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
