@@ -93,3 +93,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 15:15 Claude: score is value-weighted (tp/tn/fp/fn/msg free per group, learned from chat); propose threshold derived from those values.
 - 15:55 Claude: per-candidate estimates (p_accept, 0–10 satisfaction), success = rated >= 7, propose only if p_success clears the value threshold; ratings in sim; Brier calibration in score. See DESIGN.md 5b.
 - 16:10 Claude: outcome values collapsed to one parameter w (tp = fn = w, fp = tn = 1 − w, message penalty dropped); decisions unchanged since they only ever depended on tp + fn vs fp + tn. See DESIGN.md 5.
+- 16:15 Claude: decided all proposals (calls, events, trips) are one proposal shape; frequency comes from p_accept conditioned on time since the last hangout of that size. Not built yet. See DESIGN.md 5c.

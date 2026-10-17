@@ -80,6 +80,13 @@ For each activity and each week:
 - **Feedback:** after a hangout, attendees rate it 0–10. The rating moves the interest slider, and a hangout rated below the cutoff counts as an FP with reason `low_rating`.
 - Each proposal stores its estimate, so the score reports **calibration** (Brier score on predicted vs. actual success) next to the outcomes.
 
+### 5c. One kind of proposal: calls, events and trips are all event proposals (target design)
+
+- Calls, local events (from Partiful, Luma or other sources) and group trips are all the same object, a **proposal**: what, when, where, cost, size of the ask (hours, travel, lead time), and source. **Why:** separate artifacts and frameworks per type are bloat, and don't scale to new sources.
+- **Frequency comes from the estimate, not from types.** p_accept is conditioned on how long it has been since the group last did something of that size. A call a week after the last call scores well; a trip three months after the last trip scores low, and a year later scores high. Trips are rare because their p_success usually sits below `1 − w`, not because a rule says so.
+- The per-activity sliders and cadence knobs become learned preferences over proposal features. "call", "event" and "trip" survive only as tags, for readable logs and for the per-(tag, week) cells in the score.
+- **Status:** decided Oct 17, not yet built. The code still has separate sliders for call, event and trip; we kept it for the demo because GlueBot was live on Discord.
+
 ### 6. Pacing
 
 - Only **ignored** nudges count against the weekly budget (`max_ignored_nudges_per_week`), so a busy planning week where people engage is never capped.
