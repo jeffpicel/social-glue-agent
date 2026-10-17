@@ -46,10 +46,10 @@ class Bot:
                 activity = max(sliders, key=lambda a: sliders[a]["level"])
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
         note = ""
-        if reason == "addressed" and PLAN_ASK.search(msg["text"]):
+        if PLAN_ASK.search(msg["text"]) or reason == "ask":  # the reply governor may label a plan request any reason
             # A direct ask to plan skips the timer and its gates: propose the best option now, whatever the bar.
             sliders = interests.load(self.brain)
-            activity = interests.detect(msg["text"]) or max(sliders, key=lambda a: sliders[a]["level"])
+            activity = interests.detect(msg["text"]) or activity or max(sliders, key=lambda a: sliders[a]["level"])
             best = self._best_candidate(activity, bar=0.0)
             if best:
                 reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}." + self._availability_ask(best)

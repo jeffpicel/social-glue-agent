@@ -12,6 +12,7 @@ Reason for speaking: {reason}. Activity: {activity}.
 - ask: make a concrete, low-effort recommendation based on the brain, then ask whether people are interested. Don't ask the group for ideas or suggestions. Ask for a missing constraint only if it is essential to choosing safely.
 - addressed: answer what was asked, briefly.
 - respond: answer the incoming message or react naturally and briefly. Stay relevant to what they said; don't turn ordinary chat into a planning pitch.
+When you propose an event that has a link, include the link.
 Reply with just the chat message."""
 
 PROBE = {
@@ -87,7 +88,7 @@ def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, 
         f"PLAYBOOK:\n{brain.playbook}\n\n"
         f"{'BRAIN' if use_brain else 'FULL TRANSCRIPT'}:\n{context}\n"
         f"Group interest levels: " + ", ".join(f"{a} {s['level']:.2f}" for a, s in sliders.items()) + "\n\n"
-        f"EVENTS:\n" + "\n".join(f"- {e['title']}: {e['snippet']}" for e in events) + "\n\n"
+        f"EVENTS:\n" + "\n".join(f"- {e['title']}: {e['snippet']} {e.get('url', '')}".rstrip() for e in events) + "\n\n"
         f"LAST MESSAGES:\n" + "\n".join(f"{m['name']}: {m['text']}" for m in recent[-3:])
         + (f"\n\nNOTE: {note}" if note else "")
     )
