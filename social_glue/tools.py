@@ -1,4 +1,4 @@
-"""You.com search for real events, cached to disk so the demo never stalls on the network."""
+"""Event search (Serper/Google first, then You.com), cached to disk so the demo never stalls on the network."""
 import hashlib
 import json
 import os
@@ -13,6 +13,17 @@ FALLBACK = [
 ]
 
 
+def _serper(query: str) -> list[dict]:
+    """Google results via serper.dev."""
+    import requests
+
+    r = requests.post("https://google.serper.dev/search", json={"q": query, "num": 10},
+                      headers={"X-API-KEY": os.environ["SERPER_API_KEY"]}, timeout=10)
+    r.raise_for_status()
+    organic = r.json().get("organic", [])[:5]
+    return [{"title": h.get("title", ""), "url": h.get("link", ""), "snippet": " ".join(x for x in (h.get("date"), h.get("snippet")) if x)} for h in organic]
+
+
 def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
     query = f"events in {city} {when} for people into {interests} (partiful OR lu.ma OR eventbrite) date time"
     CACHE.mkdir(parents=True, exist_ok=True)
@@ -20,6 +31,14 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
     if path.exists():
         return json.loads(path.read_text())
     results = FALLBACK
+    if os.getenv("SERPER_API_KEY"):
+        try:
+            hits = _serper(query)
+            if hits:
+                path.write_text(json.dumps(hits, indent=2))
+                return hits
+        except Exception as e:  # noqa: BLE001 - fall through to You.com, then canned events
+            print(f"[serper] search failed: {e}")
     key = os.getenv("YOU_API_KEY") or os.getenv("YDC_API_KEY")
     if key:
         try:

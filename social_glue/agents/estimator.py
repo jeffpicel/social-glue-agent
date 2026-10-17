@@ -55,7 +55,7 @@ def candidates(brain: Brain, activity: str, events: list[dict]) -> list[dict]:
             start, end = (int(window[:2]) * 60 + int(window[3:5]), int(window[6:8]) * 60 + int(window[9:])) if window else (19 * 60, 21 * 60)
             free, known = slots.free_for(brain, day, start, end - start)
             out.append({"id": i, "activity": "event", "option": f"{e['title']} ({day[:-1]} {slots.fmt(start)})", "day": day,
-                        "free": free, "known": known})
+                        "free": free, "known": known, "url": e.get("url", "")})
         return out
     return [{"id": i, "activity": "trip", "option": t["option"], "tags": t["tags"], "day": None} for i, t in enumerate(TRIPS)]
 
