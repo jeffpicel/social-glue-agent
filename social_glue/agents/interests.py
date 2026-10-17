@@ -1,8 +1,8 @@
 """Interest sliders: the group's current appetite for each kind of hangout, learned explore/exploit style.
 
 brain/interests.md holds one slider per activity: {level 0..1, signals, last_done, last_proposed, last_probe}.
-- High slider: exploit. Propose that activity when it's due; yes/no/ignored replies are the feedback.
-- Low slider: we'd never get feedback by not proposing, so occasionally *probe* ("would you be into a trip
+- Above the value threshold (agents/values.py): exploit. Propose that activity when it's due; yes/no/ignored replies are the feedback.
+- Below it: we'd never get feedback by not proposing, so occasionally *probe* ("would you be into a trip
   this year?") to see if it should be higher. Groups drift, so this never fully stops.
 All knobs live in playbook.md so the reflector can tune them.
 """
@@ -71,7 +71,9 @@ def choose(brain: Brain, now: str) -> tuple[str, str] | None:
     t = datetime.fromisoformat(now)
     pb = brain.playbook
     sliders = load(brain)
-    threshold = knob(pb, "probe_below", 0.35)
+    from social_glue.agents import values
+
+    threshold = values.threshold(values.load(brain))  # propose above it, probe below it
     due = []
     for a, s in sliders.items():
         cadence = knob(pb, f"cadence_days_{a}", DEFAULT_CADENCE[a])

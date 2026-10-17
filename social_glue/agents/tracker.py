@@ -60,6 +60,20 @@ def on_reply(brain: Brain, msg: dict, history: list[dict]) -> list[str]:
     return notes
 
 
+RATING = re.compile(r"\b(10|[0-9])\s*/\s*10\b")
+
+
+def on_rating(brain: Brain, msg: dict, history: list[dict]) -> list[str]:
+    """'8/10' after a hangout: store it on the most recent confirmed proposal and move the slider toward it."""
+    m = RATING.search(msg["text"])
+    done = [b for b in history if b.get("confirmed")]
+    if not m or not done or msg["name"] in done[-1].setdefault("ratings", {}):
+        return []
+    item, score = done[-1], int(m.group(1))
+    item["ratings"][msg["name"]] = score
+    return [interests.update(brain, item["activity"], score / 10, msg["ts"]) + f" (rated {score}/10)"]
+
+
 def on_tick(brain: Brain, now: str, history: list[dict]) -> list[str]:
     """Silence is feedback too: an open item nobody answered within a day nudges its slider down."""
     item = _open_item(history)

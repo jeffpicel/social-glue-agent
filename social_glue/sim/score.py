@@ -1,22 +1,26 @@
-"""score(episode): a confusion matrix over (activity, week) decisions, plus annoyance.
+"""score(episode): accuracy of a confusion matrix over (activity, week) decisions, with a light message penalty.
 
 For each activity and each 7-day window:
-- TP: we proposed it and the group took it (confirmed)
-- FP: we proposed it and it wasn't taken. Each FP carries a reason from the replies:
-      activity (wrong kind of hangout), timing (wrong day / too soon), specifics (wrong event/place/price)
+- TP: we proposed it, the group took it, and it was rated at or above the success cutoff (default 7/10)
+- FP: we proposed it and it wasn't a success. Each FP carries a reason:
+      activity (wrong kind of hangout), timing (wrong day / too soon), specifics (wrong event/place/price),
+      ignored (nobody answered), low_rating (it happened but was rated below the cutoff)
 - FN: the group wanted it (hidden appetite >= 0.5), it wasn't done recently enough, and we didn't offer it.
       Each FN carries a reason from the bot's own timer log for that window:
       unexplored (belief low, never probed), misread (belief low despite probing),
       nudge_budget / waiting_for_quiet / no_availability (wanted to propose but was blocked),
       not_due (belief high but cadence said not yet)
 - TN: we didn't offer it and they didn't want it
-Probes are exploration (how FNs get found) and are counted separately; they cost only through annoyance.
-score = F1 - 0.1 * annoyance
+Probes are exploration (how FNs get found); they count only as messages.
+score = (tp*TP + tn*TN - fp*FP - fn*FN) / decisions - msg * bot messages
+using this group's TRUE values (hidden in the group JSON, defaults in agents/values.py). The bot only ever sees its
+own estimates of them in brain/values.md.
 """
 from collections import Counter
 from datetime import datetime
 
 from social_glue.agents.interests import DEFAULT_CADENCE
+from social_glue.agents.values import DEFAULT as DEFAULT_VALUES
 
 
 def fn_reason(activity: str, window_days: range, decisions: list[dict], probes: list[dict], day_of) -> str:
@@ -30,7 +34,6 @@ def fn_reason(activity: str, window_days: range, decisions: list[dict], probes: 
         return "misread" if probed else "unexplored"
     return "not_due"
 
-W_ANNOY = 0.1
 WINDOW = 7
 
 
@@ -47,12 +50,21 @@ def score(episode: dict) -> dict:
     proposals = [b for b in episode["bot_messages"] if b["kind"] == "propose" and b.get("activity")]
     probes = [b for b in episode["bot_messages"] if b["kind"] == "probe"]
 
-    tp = sum(1 for b in proposals if b.get("confirmed"))
-    fp_reasons = Counter(Counter(b.get("reasons") or ["ignored"]).most_common(1)[0][0] for b in proposals if not b.get("confirmed"))
+    cut = g.get("success_cutoff", 7)
+    rating = lambda b: sum(b["ratings"].values()) / len(b["ratings"]) if b.get("ratings") else None  # noqa: E731
+    success = lambda b: bool(b.get("confirmed")) and (rating(b) or 0) >= cut  # noqa: E731
+    tp = sum(1 for b in proposals if success(b))
+    fp_reasons = Counter(
+        "low_rating" if b.get("confirmed") else Counter(b.get("reasons") or ["ignored"]).most_common(1)[0][0]
+        for b in proposals if not success(b))
+    # Calibration: how good were the bot's own estimates? (Brier score on success; lower is better)
+    est = [(b["estimate"]["p_success"], 1.0 if success(b) else 0.0) for b in proposals if b.get("estimate")]
+    brier = round(sum((p - y) ** 2 for p, y in est) / len(est), 3) if est else None
+    rated = [rating(b) for b in proposals if rating(b) is not None]
     fp = sum(fp_reasons.values())
     fn = tn = 0
     fn_reasons = Counter()
-    done_days = {a: [day_of(m["ts"]) for m in episode["meetups"] if m["activity"] == a] for a in g["appetite"]}
+    done_days = {a: [day_of(b["ts"]) for b in proposals if b["activity"] == a and success(b)] for a in g["appetite"]}
     for a in g["appetite"]:
         for w0 in range(0, days, WINDOW):
             w = range(w0, min(w0 + WINDOW, days))
@@ -67,12 +79,17 @@ def score(episode: dict) -> dict:
     precision = tp / (tp + fp) if tp + fp else 1.0
     recall = tp / (tp + fn) if tp + fn else 1.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    annoyance = sum(1 for r in episode["reactions"] if r == "annoyed") + 2 * sum(1 for r in episode["reactions"] if r == "muted")
+    total = tp + fp + fn + tn
+    accuracy = (tp + tn) / total if total else 1.0
+    messages = len(episode["bot_messages"])
+    v = {**DEFAULT_VALUES, **g.get("values", {})}
     usage = episode["usage"]
     return {
-        "score": round(f1 - W_ANNOY * annoyance, 3), "f1": round(f1, 3),
+        "score": round((v["tp"] * tp + v["tn"] * tn - v["fp"] * fp - v["fn"] * fn) / max(total, 1) - v["msg"] * messages, 3),
+        "accuracy": round(accuracy, 3), "f1": round(f1, 3),
         "precision": round(precision, 3), "recall": round(recall, 3),
         "tp": tp, "fp": fp, "fn": fn, "tn": tn, "fp_reasons": dict(fp_reasons), "fn_reasons": dict(fn_reasons),
-        "probes": len(probes), "annoyance": annoyance,
+        "probes": len(probes), "messages": messages,
+        "avg_rating": round(sum(rated) / len(rated), 1) if rated else None, "brier": brier,
         "cost": round(usage["prompt_tokens"] / max(usage["calls"], 1), 1),
     }

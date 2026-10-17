@@ -12,7 +12,6 @@
         "coffee"
       ],
       "budget": 30,
-      "annoyance_threshold": 1,
       "lines": [
         "coffee this weekend anyone?",
         "I'm into jazz lately"
@@ -28,7 +27,6 @@
         "art"
       ],
       "budget": 45,
-      "annoyance_threshold": 3,
       "lines": [
         "museum had a great exhibit",
         "I can't do Mondays, I have class"
@@ -45,7 +43,6 @@
         "art"
       ],
       "budget": 25,
-      "annoyance_threshold": 1,
       "lines": [
         "lol",
         "broke until payday, $25 max for anything"
@@ -63,5 +60,12 @@
       8,
       0.3
     ]
+  },
+  "values": {
+    "tp": 1.5,
+    "fn": 0.9,
+    "fp": 0.3,
+    "tn": 0.02,
+    "msg": 0.005
   }
 }

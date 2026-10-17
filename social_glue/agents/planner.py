@@ -33,9 +33,12 @@ def _last_day_mentioned(recent: list[dict]) -> list[str]:
     return []
 
 
-def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], recent: list[dict], use_brain: bool) -> str:
+def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], recent: list[dict], use_brain: bool, note: str = "") -> str:
     if reason == "probe":
         return PROBE[activity]
+    if reason == "propose" and "Propose exactly this: " in note:
+        option = note.split("Propose exactly this: ")[1].rstrip(".")
+        return f"How about {option}? Who's in?"
     if reason == "propose":
         # Without the brain, the offline stand-in just grabs the last day anyone mentioned.
         days = _common_days(brain) if use_brain else _last_day_mentioned(recent)
@@ -70,4 +73,4 @@ def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, 
         + (f"\n\nNOTE: {note}" if note else "")
     )
     return llm.chat(SYSTEM.format(reason=reason, activity=activity or "any"), user, tier="strong",
-                    fake=lambda: _fake(brain, reason, activity, events, recent, use_brain))
+                    fake=lambda: _fake(brain, reason, activity, events, recent, use_brain, note))

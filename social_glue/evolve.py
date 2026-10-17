@@ -18,12 +18,16 @@ from social_glue.sim.run import GROUPS, load_group, run_episode
 
 TRAIN_SEEDS = [0, 1]
 EVAL_SEEDS = [100, 101, 102]
-SHOW = ["score", "f1", "precision", "recall", "fp", "fn", "annoyance", "probes", "cost"]
+SHOW = ["score", "accuracy", "tp", "fp", "fn", "tn", "precision", "recall", "messages", "probes", "avg_rating", "brier", "cost"]
 
 
 def evaluate(group: dict, playbook: str, seeds: list[int], **kw) -> tuple[dict, list[dict]]:
     eps = [run_episode(group, playbook=playbook, seed=s, verbose=False, **kw) for s in seeds]
-    avg = {k: round(sum(e["score"][k] for e in eps) / len(eps), 3) for k in SHOW}
+    def mean(k):
+        xs = [e["score"][k] for e in eps if e["score"][k] is not None]
+        return round(sum(xs) / len(xs), 3) if xs else None
+
+    avg = {k: mean(k) for k in SHOW}
     for k in ("fp_reasons", "fn_reasons"):
         merged = {}
         for e in eps:

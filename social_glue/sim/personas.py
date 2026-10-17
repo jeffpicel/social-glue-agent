@@ -1,8 +1,7 @@
 """Simulated friends with hidden ground truth. They reveal facts slowly, answer proposals and probes
-according to the group's hidden (and drifting) appetite for each activity, and get annoyed by an over-eager bot."""
+according to the group's hidden (and drifting) appetite for each activity."""
 import json
 import random
-from datetime import datetime, timedelta
 
 from social_glue import llm
 from social_glue.agents.interests import detect
@@ -11,7 +10,7 @@ SYSTEM = """You are {name}, texting in your friend group chat. Stay in character
 Hidden truth about you (reveal only when asked or when it comes up naturally): free on {availability}; into {interests}; budget ${budget}.
 Right now your appetite for hanging out this way is: {appetite}. If the bot (Glue) proposes or asks about one of these,
 say yes if your appetite for it is high and it fits you; otherwise decline and say why in your own words
-(not into that activity right now / wrong day or too soon / wrong kind of event, place or price). You get irritated when Glue messages out of the blue too much.
+(not into that activity right now / wrong day or too soon / wrong kind of event, place or price).
 Return JSON: {{"text": "<your message>"}}"""
 
 
@@ -33,19 +32,11 @@ class Persona:
     def wants(self, activity: str) -> float:
         return max(0.0, min(1.0, self.appetite[activity] + self.noise[activity]))
 
-    def reaction(self, chat: list[dict]) -> str:
-        """Deterministic so scoring is stable: out-of-the-blue bot messages in the last 7 days vs. this person's threshold."""
-        if not chat:
-            return "none"
-        now = datetime.fromisoformat(chat[-1]["ts"])
-        # Replies to someone are fine in a busy week; out-of-the-blue bot messages are what wear people down.
-        bot_unprompted = sum(
-            1 for i, m in enumerate(chat)
-            if m["name"] == "Glue" and now - datetime.fromisoformat(m["ts"]) < timedelta(days=7)
-            and not (i and chat[i - 1]["name"] != "Glue" and datetime.fromisoformat(m["ts"]) - datetime.fromisoformat(chat[i - 1]["ts"]) < timedelta(hours=1))
-        )
-        t = self.spec["annoyance_threshold"]
-        return "muted" if bot_unprompted > t + 2 else "annoyed" if bot_unprompted > t else "none"
+    def rate(self, activity: str, text: str) -> int:
+        """Hidden satisfaction after going: how much they wanted this kind of hangout, plus taste fit."""
+        t = text.lower()
+        taste = 1.0 if any(i.split()[0] in t for i in self.spec["interests"]) else 0.4
+        return max(0, min(10, round(10 * (0.6 * self.wants(activity) + 0.4 * taste) + self.rng.uniform(-1.5, 1.5))))
 
     def _answer(self, activity: str, text: str) -> str:
         """Yes, or no with a reason: wrong activity, wrong timing, or wrong specifics."""
@@ -82,4 +73,4 @@ class Persona:
         transcript = "\n".join(f"{m['name']}: {m['text']}" for m in chat[-10:])
         out = llm.chat(system, transcript or "(chat is quiet; say something)", tier="fast", json_mode=True,
                        fake=lambda: json.dumps({"text": self._fake_text(chat)}))
-        return {"name": self.name, "text": out.get("text", "lol"), "reaction": self.reaction(chat)}
+        return {"name": self.name, "text": out.get("text", "lol")}
