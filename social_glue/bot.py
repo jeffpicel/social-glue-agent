@@ -38,7 +38,8 @@ class Bot:
         reason, activity = decision
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, activity=activity)
-        return self._say(text, msg["ts"], reason, activity, prompted=reason == "addressed")
+        # A chat-path response is prompted by the incoming message, unlike a timer nudge.
+        return self._say(text, msg["ts"], reason, activity, prompted=True)
 
     def on_tick(self, now: str) -> str | None:
         """Called on a clock (e.g. hourly in Discord, nightly in the sim). The bot's only way to start things."""

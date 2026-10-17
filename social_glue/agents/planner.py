@@ -11,6 +11,7 @@ Reason for speaking: {reason}. Activity: {activity}.
 - probe: the group hasn't shown interest in {activity} lately. Ask ONE light, no-pressure question to check if they'd want it. Don't propose specifics.
 - ask: ask ONE short question that fills the biggest gap in the brain (batch several people).
 - addressed: answer what was asked, briefly.
+- respond: answer the incoming message or react naturally and briefly. Stay relevant to what they said; don't turn ordinary chat into a planning pitch.
 Reply with just the chat message."""
 
 PROBE = {
@@ -34,6 +35,16 @@ def _last_day_mentioned(recent: list[dict]) -> list[str]:
 
 
 def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], recent: list[dict], use_brain: bool, note: str = "") -> str:
+    if reason == "respond":
+        incoming = recent[-1] if recent else {"text": ""}
+        text = incoming["text"].strip()
+        if "?" in text:
+            return "Good question! What do you all think?"
+        if any(x in text.lower() for x in ("congrats", "congratulations")):
+            return "That’s great—congratulations!"
+        if any(x in text.lower() for x in ("sorry to hear", "that sucks")):
+            return "Ah, sorry—that sounds rough. Hope things get easier."
+        return "Got it, thanks for sharing!"
     if reason == "probe":
         return PROBE[activity]
     if reason == "propose" and "Propose exactly this: " in note:
