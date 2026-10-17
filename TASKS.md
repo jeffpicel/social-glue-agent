@@ -6,7 +6,7 @@ Deadline: submit by **4:45 PM PT** (hard cutoff 5:00).
 
 ## Re-scope (2:30 PM)
 
-Thomas is on the Slack bot for team coordination, so the simulator has no owner. Jeff (plus coding agents) now owns the **whole harness**, and the simulator shrinks to the thinnest version that still produces a before/after number. If Thomas frees up, he picks up anything under `sim/` marked `todo`.
+Thomas is exploring Discord as the place to deploy the bot (instead of Slack), so the simulator has no owner. Jeff (plus coding agents) now owns the **whole harness**, and the simulator shrinks to the thinnest version that still produces a before/after number. If Thomas frees up, he picks up anything under `sim/` marked `todo`.
 
 **Vision in one breath:** a bot sits in a friend group chat. Every message goes through one pipeline (listen, curate, decide whether to speak, plan). Its memory is the brain folder (per-friend files, group, playbook, plus any other files that help, e.g. past proposals) and the last few messages, rather than the whole transcript, so prompts stay small as the chat grows. A playbook file controls how pushy it is, and a reflect step rewrites that playbook from scored episodes. **Pitch: Version N+1 first** (it learns how pushy to be, with held-out before/after), shared brain second.
 
@@ -64,7 +64,7 @@ Two paths share the brain:
 | 4:15–4:30 | README: what was built today, how to run | Jeff | todo |
 | 4:15–4:30 | Record 1-min video | Thomas | todo |
 | 4:35–4:45 | Submit (repo public, video, both members) | Jeff | todo |
-| side | Slack bot for team coordination (PR #1) | Thomas | doing (Thomas) |
+| side | Discord as the live home for the bot: adapter that calls `Bot.on_message` per message and `Bot.on_tick` on a timer (e.g. every hour), one `brain/` dir per channel | Thomas | doing (Thomas) |
 
 **Cut list if behind** (in order): trip proposals, live You.com calls (cached only), heldout drops to 1 group, evolve becomes a hand-shown playbook diff. **Never cut** the playbook v0 vs vN number on held-out groups.
 
@@ -78,3 +78,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 15:00 Claude: added `Bot.on_tick` timer path so the bot proposes after a quiet stretch (Jeff's call).
 - 15:15 Claude: timer now driven by time since last meetup; tracker records confirmed plans; annoyance is per-week. Offline evolve run keeps a playbook edit that cuts held-out annoyance 4.5 -> 0.
 - 15:25 Claude: budget now counts only ignored nudges (`max_ignored_nudges_per_week`), so busy planning weeks aren't capped; pitch reframed to Version N+1 first.
+- 15:30 Claude: Thomas is on a Discord deployment; the adapter only needs `Bot.on_message` and `Bot.on_tick`.
