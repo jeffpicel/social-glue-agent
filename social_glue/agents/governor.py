@@ -21,15 +21,17 @@ group question, addresses Glue, shares something that merits a brief empathetic/
 or a short acknowledgement materially helps planning. Do not repeat information already handled.
 Never answer messages from Glue (they are excluded before this call).
 Return only JSON: {\"reply\": true|false, \"reason\": \"addressed|respond|ask\", \"activity\": \"call|event|trip|null\"}.
-Use addressed for direct questions/mentions, respond for a useful conversational answer, and ask
-only when a concise question is genuinely needed to fill a planning gap. If silence is better,
-return {\"reply\": false}."""
+Use addressed for direct mentions, respond for a conversational answer, and ask when the human is
+asking Glue for an activity idea or recommendation. In that case Glue should suggest something,
+not ask the human to provide suggestions. If silence is better, return {\"reply\": false}."""
 
 
 def _fake_reply_decision(msg: dict) -> str:
     text = msg["text"].lower()
     if any(n in text for n in BOT_NAMES):
         return json.dumps({"reply": True, "reason": "addressed", "activity": None})
+    if re.search(r"\b(what should we do|any ideas|any suggestions|what do you recommend|where should we go|suggest something)\b", text):
+        return json.dumps({"reply": True, "reason": "ask", "activity": interests.detect(text)})
     if "?" in text:
         return json.dumps({"reply": True, "reason": "respond", "activity": None})
     if re.search(r"\b(congrats|congratulations|sorry to hear|that sucks|thank you|thanks glue)\b", text):
@@ -81,9 +83,8 @@ def decide_idle(brain: Brain, now: str, last_activity: str | None, bot_history: 
     if len(ignored_nudges(bot_history, transcript, t)) >= budget(brain.playbook):
         entry["blocked"] = "nudge_budget"
         return None
-    if reason == "propose" and activity == "call" and len([p for p in brain.people() if "availability" in brain.facts(p)]) < 2:
-        entry["blocked"] = "no_availability"
-        return "ask", "call"  # can't pick a call time yet
+    # Even with incomplete availability, make a concrete low-commitment suggestion.
+    # The planner can use a reasonable default time and invite a yes/no or a constraint.
     return reason, activity
 
 

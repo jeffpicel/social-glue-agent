@@ -36,6 +36,11 @@ class Bot:
         if decision is None:
             return None
         reason, activity = decision
+        if reason == "ask" and activity is None:
+            activity = interests.detect(msg["text"])
+            if activity is None:
+                sliders = interests.load(self.brain)
+                activity = max(sliders, key=lambda a: sliders[a]["level"])
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, activity=activity)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.

@@ -7,9 +7,9 @@ from social_glue.tools import search_events
 SYSTEM = """You are Glue, a friendly bot in a friends' group chat that helps them actually hang out.
 Follow the playbook. Use only the brain facts given; don't invent facts about people.
 Reason for speaking: {reason}. Activity: {activity}.
-- propose: suggest ONE concrete {activity} plan (day + time, and place/event/destination) that fits availability and interests. Ask who's in.
+- propose: suggest ONE concrete {activity} plan (day + time, and place/event/destination) that fits availability and interests. If availability is missing, choose a reasonable low-commitment default and ask who's in; don't ask the group to invent the plan.
 - probe: the group hasn't shown interest in {activity} lately. Ask ONE light, no-pressure question to check if they'd want it. Don't propose specifics.
-- ask: ask ONE short question that fills the biggest gap in the brain (batch several people).
+- ask: make a concrete, low-effort recommendation based on the brain, then ask whether people are interested. Don't ask the group for ideas or suggestions. Ask for a missing constraint only if it is essential to choosing safely.
 - addressed: answer what was asked, briefly.
 - respond: answer the incoming message or react naturally and briefly. Stay relevant to what they said; don't turn ordinary chat into a planning pitch.
 Reply with just the chat message."""
@@ -45,6 +45,13 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
         if any(x in text.lower() for x in ("sorry to hear", "that sucks")):
             return "Ah, sorry—that sounds rough. Hope things get easier."
         return "Got it, thanks for sharing!"
+    if reason == "ask":
+        if activity == "trip":
+            return "How about a long weekend cabin trip near Tahoe sometime this fall? Who'd be interested?"
+        if activity == "event":
+            event = events[0]["title"] if events else "a local live music night"
+            return f"How about checking out {event} together? Who'd be up for it?"
+        return "How about a relaxed 30-minute video call Sunday at 7pm? Who's in?"
     if reason == "probe":
         return PROBE[activity]
     if reason == "propose" and "Propose exactly this: " in note:
@@ -60,17 +67,16 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
             ev = events[0]["title"] if events else "a show downtown"
             return f"Event idea: {ev} this {day}. Who's in?"
         if not days:
-            return "No single day works for everyone yet for a call. Anyone flexible on Tuesdays or Thursdays?"
+            return "How about a relaxed 30-minute video call Sunday at 7pm as a starting point? Who's in?"
         return f"Video call at 7pm this {day}? Looks like it works for everyone who's shared. Who's in?"
-    missing = [p.capitalize() for p in brain.people() if "availability" not in brain.facts(p)]
-    if reason == "ask" and missing:
-        return f"Quick one {', '.join(missing)}: which evenings usually work for you?"
+    if reason == "ask":
+        return "How about a relaxed 30-minute video call Sunday at 7pm? Who's in?"
     return "On it! Tell me which days work and I'll find a time."
 
 
 def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, note: str = "", activity: str | None = None) -> str:
     events = []
-    if reason == "propose" and activity == "event":
+    if reason in ("propose", "ask") and activity == "event":
         tastes = ", ".join(brain.facts(p)["interests"]["value"] for p in brain.people() if "interests" in brain.facts(p))
         events = search_events(brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")[:3]
     sliders = interests.load(brain)
