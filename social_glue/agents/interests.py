@@ -62,11 +62,24 @@ def _days(a: str | None, b: datetime) -> float:
     return 999 if a is None else (b - datetime.fromisoformat(a)).total_seconds() / 86400
 
 
+def recency_penalty(brain: Brain, activity: str, t: datetime, sliders: dict | None = None) -> float:
+    """How much higher the bar is because the group met up recently (any activity).
+
+    A soft penalty, not a gate: it fades linearly to 0 over the activity's cadence, so an unusually
+    good option can still clear the bar right after a meetup.
+    """
+    sliders = sliders or load(brain)
+    days = min(_days(s["last_done"], t) for s in sliders.values())
+    cadence = knob(brain.playbook, f"cadence_days_{activity}", DEFAULT_CADENCE[activity])
+    return knob(brain.playbook, "recency_penalty", 0.6) * max(0.0, 1 - days / cadence)
+
+
 def choose(brain: Brain, now: str) -> tuple[str, str] | None:
     """Pick what to do next: ("propose", activity), ("probe", activity), or None.
 
-    Exploit first: the highest slider whose cadence is due. Otherwise explore: the least-known low slider
-    that hasn't been probed recently.
+    Exploit first: the wanted activity (slider above the threshold) with the best level after the recency
+    penalty; the bot then proposes only if its best candidate clears threshold + penalty.
+    Otherwise explore: the least-known low slider that hasn't been probed recently.
     """
     t = datetime.fromisoformat(now)
     pb = brain.playbook
@@ -76,9 +89,8 @@ def choose(brain: Brain, now: str) -> tuple[str, str] | None:
     threshold = values.threshold(values.load(brain))  # propose above it, probe below it
     due = []
     for a, s in sliders.items():
-        cadence = knob(pb, f"cadence_days_{a}", DEFAULT_CADENCE[a])
-        if s["level"] >= threshold and _days(s["last_done"], t) >= cadence and _days(s["last_proposed"], t) >= knob(pb, "repropose_after_days", 2):
-            due.append((s["level"], -ACTIVITIES.index(a), a))  # ties go to the lighter-weight activity
+        if s["level"] >= threshold and _days(s["last_proposed"], t) >= knob(pb, "repropose_after_days", 2):
+            due.append((s["level"] - recency_penalty(brain, a, t, sliders), -ACTIVITIES.index(a), a))  # ties go to the lighter-weight activity
     if due:
         return "propose", max(due)[2]
     probe_every = knob(pb, "probe_every_days", 7)

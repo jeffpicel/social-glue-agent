@@ -61,7 +61,11 @@ class Bot:
         note = f"Chat quiet for {quiet} days. Last {activity} together: {done}. Keep it low-effort to say yes (or no) to."
         best = None
         if reason == "propose":
-            best = self._best_candidate(activity)
+            penalty = interests.recency_penalty(self.brain, activity, datetime.fromisoformat(now))
+            best = self._best_candidate(activity, penalty)
+            if best is None and penalty > 0:
+                self.decisions[-1]["blocked"] = "recent_meetup"  # nothing good enough to justify meeting again so soon
+                return None
             if best is None:
                 reason = "probe"  # nothing concrete looks good enough; ask instead of pushing
             else:
@@ -75,14 +79,15 @@ class Bot:
             self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
         return text
 
-    def _best_candidate(self, activity: str) -> dict | None:
-        """Estimate every candidate for this activity; return the best if its chance of success clears the bar."""
+    def _best_candidate(self, activity: str, penalty: float = 0.0) -> dict | None:
+        """Estimate every candidate for this activity; return the best if its chance of success clears the bar
+        (value threshold plus the recency penalty)."""
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
             events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
         ranked = estimator.estimate(self.brain, estimator.candidates(self.brain, activity, events))
-        bar = values.threshold(values.load(self.brain))
+        bar = values.threshold(values.load(self.brain)) + penalty
         return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
 
     def _say(self, text: str, ts: str, kind: str, activity: str | None, prompted: bool) -> str:
