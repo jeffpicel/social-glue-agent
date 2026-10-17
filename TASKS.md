@@ -44,8 +44,8 @@ Two paths share the brain:
 
 - **Interest sliders, not group types.** `brain/interests.md` holds a 0–1 slider per activity (call, event, trip). High sliders are exploited (propose when due by cadence); low sliders get occasional light probes, since otherwise we'd never get feedback. Groups drift, so probing never fully stops.
 - **Every "no" has a reason** (activity / timing / specifics) and updates the right thing: the slider, availability, or tastes.
-- **Score = confusion matrix over (activity, week):** TP proposed and taken, FP proposed and declined (with reason), FN wanted but never offered (with reason: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, not_due), TN. `score = (tp·TP + tn·TN − fp·FP − fn·FN) / decisions − msg × messages`.
-- **Outcome values are free parameters per group** (`brain/values.md`, defaults tp 1.0 > fn 0.6 > fp 0.3 > tn 0.05, msg 0.005). They're learned from what the group says ("so fun", "been forever", "too many pings"), never by the reflector, so the loop can't lower its own bar. The propose-vs-probe line falls out of them: propose when interest > (fp + tn) / (tp + fn + fp + tn). The sim scores with each group's hidden true values.
+- **Score = confusion matrix over (activity, week):** TP proposed and taken, FP proposed and declined (with reason), FN wanted but never offered (with reason: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, not_due), TN. `score = (w·(TP − FN) + (1 − w)·(TN − FP)) / decisions`.
+- **One free value per group, w** (`brain/values.md`, default 0.82): how much the group values meeting up (TP gain = FN cost) versus not being messaged (TN gain = FP cost = 1 − w). No message penalty for now. Learned from what the group says ("so fun" and "been forever" raise it, "too many pings" lowers it), never by the reflector, so the loop can't lower its own bar. Propose when interest > 1 − w. The sim scores with each group's hidden true w.
 - **Version N+1 is per group:** a group's playbook improves from its own history; proof is v0 vs vN on fresh, unseen simulated runs of that group. No cross-group learning.
 - **Timer path initiates, chat path reacts.** `on_tick` proposes/probes; `on_message` answers and fills gaps.
 
@@ -92,3 +92,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 15:08 Claude: dropped annoyance; score is accuracy minus a light per-message penalty.
 - 15:15 Claude: score is value-weighted (tp/tn/fp/fn/msg free per group, learned from chat); propose threshold derived from those values.
 - 15:55 Claude: per-candidate estimates (p_accept, 0–10 satisfaction), success = rated >= 7, propose only if p_success clears the value threshold; ratings in sim; Brier calibration in score. See DESIGN.md 5b.
+- 16:10 Claude: outcome values collapsed to one parameter w (tp = fn = w, fp = tn = 1 − w, message penalty dropped); decisions unchanged since they only ever depended on tp + fn vs fp + tn. See DESIGN.md 5.

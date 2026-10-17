@@ -49,7 +49,7 @@ A decline is classified, and each reason updates a different part of the brain, 
 
 Silence for a day counts as a weak no.
 
-### 5. Scoring: a confusion matrix with free outcome values
+### 5. Scoring: a confusion matrix weighted by one free value, w
 
 For each activity and each week:
 
@@ -58,17 +58,19 @@ For each activity and each week:
 - **FN:** the group wanted it, it hadn't happened recently, and we never offered it. The reason comes from the bot's own decision log: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, or not_due.
 - **TN:** we didn't offer it and they didn't want it.
 
-`score = (tp·TP + tn·TN − fp·FP − fn·FN) / decisions − msg × bot messages`
+`score = (w·(TP − FN) + (1 − w)·(TN − FP)) / decisions`
 
-- The outcome values are **free parameters per group**. Defaults follow "hangouts are rare and valuable": tp 1.0 > fn 0.6 > fp 0.3 > tn 0.05, and msg 0.005.
-- **The message penalty is deliberately light.** A burst of back-and-forth to plan a trip is fine.
-- **There are at least two sets of values:**
-  - **True values:** what outcomes are really worth to the group. We never observe them, and they may be undiscoverable by nature, since this is a framework rather than a measurement. In the simulator they're hidden in the group JSON and used only to score.
-  - **Operating estimates:** `brain/values.md`, our best guess at the true values. These drive what the bot does, and we want them to improve over time.
-- **How to update the estimates is an open question** (see below). Today's rule is a placeholder: phrases in the chat nudge them ("that was so fun" raises tp, "it's been forever" raises fn, "too many pings" raises fp and msg).
-- For now the reflector edits only the playbook, not the estimates, so the N+1 loop can't raise its score by changing what it's judged on. How this fits with learning the estimates is part of the open question.
-- The values also drive decisions. The bot proposes when its interest estimate exceeds `(fp + tn) / (tp + fn + fp + tn)`, the point where proposing has the higher expected value. A group that values hangouts more gets a bolder bot.
-- **Rejected along the way:** an "annoyance" term (too loaded), plain accuracy (rewards silence, since most cells are TNs), and balanced accuracy (locks in fixed 50/50 weights).
+- **One free parameter per group, w (0 to 1).** w is how much the group values meeting up: a hangout we made happen earns w, and one they wanted that we never offered costs w. 1 − w is how much they value not being messaged: a proposal that didn't land costs 1 − w, and correctly leaving them alone earns 1 − w. The default is 0.82 ("hangouts are rare and valuable").
+- **Why one is enough:** proposing beats staying quiet when `p·(tp + fn) > (1 − p)·(fp + tn)`, so only the two sums ever affected a decision; how each sum split between its cells never did. Scaling both sums doesn't change which playbook scores higher, so only their ratio matters, and that is w. The bot proposes when its estimate exceeds `1 − w` (0.18 with the default, the same as before).
+- **No message penalty for now.** It was deliberately light anyway, and a burst of back-and-forth to plan a trip is fine.
+- **Gave up:** raw scores aren't comparable across groups, since w sets the scale. We don't learn across groups, so that's fine.
+- **There are two versions of w:**
+  - **True w:** what outcomes are really worth to the group. We never observe them, and they may be undiscoverable by nature, since this is a framework rather than a measurement. In the simulator it's hidden in the group JSON and used only to score.
+  - **Operating estimate:** `brain/values.md`, our best guess at the true w. It drives what the bot does, and we want it to improve over time.
+- **How to update the estimate is an open question** (see below). Today's rule is a placeholder: phrases in the chat nudge w ("that was so fun" and "it's been forever" raise it, "meh" and "too many pings" lower it).
+- For now the reflector edits only the playbook, not w, so the N+1 loop can't raise its score by changing what it's judged on. How this fits with learning the estimates is part of the open question.
+- w also drives decisions: a group that values hangouts more gets a bolder bot.
+- **Rejected along the way:** four separate outcome values plus a message cost (only two sums ever mattered), an "annoyance" term (too loaded), plain accuracy (rewards silence, since most cells are TNs), and balanced accuracy (locks in fixed 50/50 weights).
 
 ### 5b. Every candidate gets an estimate; success means a good hangout
 
@@ -91,7 +93,7 @@ For each activity and each week:
 
 ### 8. Simulator
 
-- `social_glue/sim/groups/*.json`: each group has members with hidden availability, interests and budget, plus a hidden **appetite** per activity that can **drift** mid-episode, and hidden true **values** used for scoring.
+- `social_glue/sim/groups/*.json`: each group has members with hidden availability, interests and budget, plus a hidden **appetite** per activity that can **drift** mid-episode, and a hidden true **w** used for scoring.
 - Personas reply in character, answer proposals and probes according to the appetite, and decline with a reason. After a hangout someone says how it went.
 - `FAKE_LLM=1`, or no `CRUSOE_API_KEY`, runs everything offline with canned answers. Offline numbers only prove the plumbing works.
 
@@ -107,13 +109,13 @@ Proposed and parked for now: find_common_time, search_events, poll, propose_and_
 
 ## Open questions
 
-- **How should the operating value estimates be updated?** We need a framework for this. Some candidates:
+- **How should the operating estimate of w be updated?** With one number per group this is smaller: for example a Beta prior on w, updated by ratings and by yes, no or ignored replies. We need a framework for this. Some candidates:
   - chat signals (today's placeholder)
   - explicit questions ("how did that go, 1–5?")
   - revealed preference (what the group says yes to, and how fast)
   - Bayesian updating with a prior per value
   - letting the N+1 loop propose value changes, judged against something it doesn't control
 
-  Related: what do we score against outside the simulator, where true values don't exist?
-- The values-derived propose threshold is low with the defaults (0.18), so trips get proposed without a probe. Do we want a separate "big ask" rule for trips?
+  Related: what do we score against outside the simulator, where the true w doesn't exist?
+- The propose threshold is low with the default w (0.18), so trips get proposed without a probe. Do we want a separate "big ask" rule for trips?
 - Real Crusoe numbers: the "First real Crusoe run" thread is producing them. Update this file with the v0 vs vN table when they land.

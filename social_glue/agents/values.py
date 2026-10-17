@@ -1,67 +1,70 @@
-"""What outcomes are worth to this group: the free parameters behind both the score and the bot's decisions.
+"""What outcomes are worth to this group: one free parameter behind both the score and the bot's decisions.
 
-brain/values.md holds the bot's current estimates:
-  tp  benefit of a hangout that happens because we proposed it   (highest: hangouts are rare and valuable)
-  fn  cost of a hangout they wanted that we never offered         (high: missing one is worse than a "no")
-  fp  cost of a proposal they turn down                           (lower)
-  tn  benefit of correctly leaving them alone                     (lowest)
-  msg cost per bot message                                        (light: planning bursts are fine)
+brain/values.md holds the bot's current estimate of w, between 0 and 1:
+  w      how much the group values meeting up: the gain of a hangout we made happen (TP), and equally the
+         cost of one they wanted that we never offered (FN)
+  1 - w  how much the group values not being messaged: the cost of a proposal that didn't land (FP), and equally
+         the gain of correctly leaving them alone (TN)
 
-They're updated from what the group says (a great hangout, "it's been forever", "too many pings"), never by the
-reflector, so the N+1 loop can't make its own job easier by lowering the costs it's judged on.
-The bot proposes an activity when expected value says so: p*tp - (1-p)*fp > (1-p)*tn - p*fn,
-i.e. when its interest estimate p exceeds (fp + tn) / (tp + fn + fp + tn).
+Why one number: the bot proposes when p*(tp + fn) > (1-p)*(fp + tn), so only those two sums ever affect a decision,
+and scaling both doesn't change which playbook scores higher. That leaves their ratio, w.
+The bot proposes when its estimate p exceeds 1 - w. The default w = 0.82 says hangouts are rare and valuable.
+
+w is updated from what the group says (a great hangout, "it's been forever", "too many pings"), never by the
+reflector, so the N+1 loop can't make its own job easier by changing what it's judged on.
 """
 import json
 import re
 
 from social_glue.brain import Brain
 
-DEFAULT = {"tp": 1.0, "fn": 0.6, "fp": 0.3, "tn": 0.05, "msg": 0.005}
-RANGE = {"tp": (0.3, 2.0), "fn": (0.1, 1.5), "fp": (0.05, 1.0), "tn": (0.0, 0.3), "msg": (0.0, 0.05)}
+DEFAULT = {"w": 0.82}
+RANGE = (0.5, 0.97)
 RATE = 0.25
 
-SIGNALS = [  # (pattern, key, direction)
-    (re.compile(r"so fun|was great|was amazing|best night|loved it|do (that|it) more", re.I), "tp", +1),
-    (re.compile(r"\bmeh\b|was ok\b|kinda boring|not worth", re.I), "tp", -1),
-    (re.compile(r"been forever|we should (hang|do something|get together)|miss (you|y'all|everyone)|haven't (seen|hung)", re.I), "fn", +1),
-    (re.compile(r"too many (messages|pings)|stop (pinging|asking)|chill (out|glue)|spam", re.I), "fp", +1),
-    (re.compile(r"too many (messages|pings)|so many messages|stop (pinging|asking)", re.I), "msg", +1),
+SIGNALS = [  # (pattern, direction)
+    (re.compile(r"so fun|was great|was amazing|best night|loved it|do (that|it) more", re.I), +1),
+    (re.compile(r"been forever|we should (hang|do something|get together)|miss (you|y'all|everyone)|haven't (seen|hung)", re.I), +1),
+    (re.compile(r"\bmeh\b|was ok\b|kinda boring|not worth", re.I), -1),
+    (re.compile(r"too many (messages|pings)|so many messages|stop (pinging|asking)|chill (out|glue)|spam", re.I), -1),
 ]
+
+
+def normalize(v: dict) -> dict:
+    """Accept the old four-value form ({tp, fn, fp, tn}) and collapse it to w."""
+    if "w" not in v and all(k in v for k in ("tp", "fn", "fp", "tn")):
+        meet = v["tp"] + v["fn"]
+        return {"w": round(meet / (meet + v["fp"] + v["tn"]), 4)}
+    return {**DEFAULT, **{k: v[k] for k in ("w",) if k in v}}
 
 
 def load(brain: Brain) -> dict:
     p = brain.root / "values.md"
     m = re.search(r"<!-- values: (.*?) -->", p.read_text(), re.S) if p.exists() else None
-    v = json.loads(m.group(1)) if m else {}
-    return {**DEFAULT, **v}
+    return normalize(json.loads(m.group(1)) if m else {})
 
 
 def save(brain: Brain, v: dict) -> None:
-    lines = [f"<!-- values: {json.dumps(v)} -->", "# What outcomes are worth to this group", ""]
-    names = {"tp": "hangout we made happen", "fn": "missed hangout they wanted", "fp": "proposal turned down",
-             "tn": "correctly left alone", "msg": "each bot message"}
-    for k, label in names.items():
-        sign = "+" if k in ("tp", "tn") else "-"
-        lines.append(f"- **{k}** ({label}): {sign}{v[k]:.3g}")
-    lines.append(f"\nPropose when interest > {threshold(v):.2f}")
+    lines = [f"<!-- values: {json.dumps(v)} -->", "# What outcomes are worth to this group", "",
+             f"- **w** (meeting up: a hangout we made happen, or one we missed): {v['w']:.3g}",
+             f"- **1 - w** (not being messaged: a proposal that didn't land, or leaving them alone): {1 - v['w']:.3g}",
+             f"\nPropose when interest > {threshold(v):.2f}"]
     (brain.root / "values.md").write_text("\n".join(lines) + "\n")
 
 
 def threshold(v: dict) -> float:
-    return (v["fp"] + v["tn"]) / (v["tp"] + v["fn"] + v["fp"] + v["tn"])
+    return 1 - v["w"]
 
 
 def learn(brain: Brain, text: str) -> list[str]:
-    """Nudge value estimates from what people say. Returns notes for the demo."""
+    """Nudge the estimate of w from what people say. Returns notes for the demo."""
     v, notes = load(brain), []
-    for pattern, key, direction in SIGNALS:
+    for pattern, direction in SIGNALS:
         if pattern.search(text):
-            lo, hi = RANGE[key]
-            old = v[key]
-            target = hi if direction > 0 else lo
-            v[key] = round(old + RATE * (target - old), 4)
-            notes.append(f"value.{key}: {old:.3g} -> {v[key]:.3g}")
+            old = v["w"]
+            target = RANGE[1] if direction > 0 else RANGE[0]
+            v["w"] = round(old + RATE * (target - old), 4)
+            notes.append(f"value.w: {old:.3g} -> {v['w']:.3g}")
     if notes:
         save(brain, v)
     return notes
