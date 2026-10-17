@@ -45,3 +45,10 @@ def best_start(brain: Brain, day: str, minutes: int = 60) -> tuple[int, int]:
 def fmt(minute: int) -> str:
     h, m = divmod(minute, 60)
     return f"{(h - 1) % 12 + 1}{':%02d' % m if m else ''}{'am' if h < 12 else 'pm'}"
+
+
+def free_for(brain: Brain, day: str, start: int, minutes: int) -> tuple[int, int]:
+    """(people free for the whole slot, people we have any window for on that day)."""
+    per_person = [windows(brain, p).get(day) for p in brain.people()]
+    known = [ws for ws in per_person if ws]
+    return sum(1 for ws in known if any(a <= start and start + minutes <= b for a, b in ws)), len(known)

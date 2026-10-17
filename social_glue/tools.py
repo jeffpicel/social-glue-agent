@@ -8,13 +8,13 @@ CACHE = Path("cache/events")
 
 FALLBACK = [
     {"title": "Sunday farmers market + live jazz", "url": "", "snippet": "Free, outdoors, 10am-2pm"},
-    {"title": "Thursday trivia night at a local brewery", "url": "", "snippet": "Teams up to 6, starts 7pm"},
-    {"title": "Saturday board game cafe meetup", "url": "", "snippet": "$10 cover, all levels"},
+    {"title": "Thursday trivia night at a local brewery", "url": "", "snippet": "Teams up to 6, 7pm-9pm"},
+    {"title": "Saturday board game cafe meetup", "url": "", "snippet": "$10 cover, all levels, 6:30pm-9:30pm"},
 ]
 
 
 def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
-    query = f"events in {city} {when} for people into {interests}"
+    query = f"events in {city} {when} for people into {interests} (partiful OR lu.ma OR eventbrite) date time"
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / (hashlib.sha1(query.encode()).hexdigest()[:12] + ".json")
     if path.exists():

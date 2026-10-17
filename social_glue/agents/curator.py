@@ -24,6 +24,9 @@ def _merge_rules(facts: dict, patches: list[dict], notes: list[str]) -> dict:
         key, old = p["key"], facts.get(p["key"])
         if key == "interests" and old:
             new["value"] = ", ".join(dict.fromkeys(_split(old["value"]) + _split(p["value"])))
+        elif key == "free_times" and old:  # new windows replace that day's old ones; other days are kept
+            days = {w.split()[0] for w in _split(p["value"])}
+            new["value"] = ", ".join([w for w in _split(old["value"]) if w.split()[0] not in days] + _split(p["value"]))
         elif old and old["value"] != new["value"]:
             notes.append(f"{p['who']}.{key}: '{old['value']}' -> '{new['value']}'")
         facts[key] = new
