@@ -3,11 +3,14 @@
 Each human message goes to Bot.on_message; a timer calls Bot.on_tick every TICK_MINUTES (default 60).
 Run with: python -m discord_adapter.run   (needs DISCORD_BOT_TOKEN in .env)
 Optional: DISCORD_CHANNEL_IDS=123,456 limits the bot to those channels; BRAINS_DIR (default brains/).
+Demo commands (not passed to the bot): "!skip 3d" fast-forwards the bot's clock and runs the timer now;
+"!brain" posts what the bot knows about the channel.
 """
 import asyncio
 import logging
 import os
-from datetime import datetime
+import re
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import certifi
@@ -34,10 +37,11 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 bots: dict[int, Bot] = {}
 locks: dict[int, asyncio.Lock] = {}
+skipped = timedelta()  # demo clock offset from !skip, so a live demo can show the timer path
 
 
 def now_iso() -> str:
-    return datetime.now().replace(microsecond=0).isoformat()  # naive local time, like the sim
+    return (datetime.now() + skipped).replace(microsecond=0).isoformat()  # naive local time, like the sim
 
 
 def bot_for(channel_id: int) -> Bot:
@@ -64,6 +68,9 @@ async def on_message(message: discord.Message):
     if message.author.bot or (ALLOWED and message.channel.id not in ALLOWED):
         return
     text = message.content
+    if text.startswith("!"):
+        await command(message, text)
+        return
     if client.user in message.mentions:  # "@Glue" arrives as <@id>; the governor looks for the word "glue"
         text = text.replace(f"<@{client.user.id}>", "@glue").replace(f"<@!{client.user.id}>", "@glue")
     msg = {"name": message.author.display_name, "text": text, "ts": now_iso()}
@@ -79,19 +86,43 @@ async def on_message(message: discord.Message):
     await say(message.channel, reply)
 
 
+async def command(message: discord.Message, text: str) -> None:
+    global skipped
+    bot = bot_for(message.channel.id)
+    if m := re.match(r"!skip\s+(\d+(?:\.\d+)?)\s*([dh]?)", text):
+        n = float(m.group(1))
+        skipped += timedelta(hours=n) if m.group(2) == "h" else timedelta(days=n)
+        await say(message.channel, f"_(skipped ahead {m.group(1)}{m.group(2) or 'd'}; it's now {now_iso()[:16]})_")
+        reply = await tick_channel(message.channel.id, bot)
+        if not reply and bot.decisions:
+            d = bot.decisions[-1]
+            await say(message.channel, f"_(stayed quiet: {d['blocked'] or 'nothing due'})_")
+    elif text.startswith("!brain"):
+        interests = bot.brain.root / "interests.md"
+        body = bot.brain.render() + ("\n\n" + interests.read_text().split("-->")[-1].strip() if interests.exists() else "")
+        await say(message.channel, f"```\n{body[:1900]}\n```")
+
+
+async def tick_channel(channel_id: int, bot: Bot) -> str | None:
+    channel = client.get_channel(channel_id)
+    if channel is None:
+        return None
+    async with locks[channel_id]:
+        try:
+            reply = await asyncio.to_thread(bot.on_tick, now_iso())
+        except Exception:
+            log.exception("on_tick failed")
+            return None
+        for note in bot.last_notes:
+            log.info("[brain %s] %s", channel_id, note)
+    await say(channel, reply)
+    return reply
+
+
 @tasks.loop(minutes=TICK_MINUTES)
 async def tick():
     for channel_id, bot in list(bots.items()):
-        channel = client.get_channel(channel_id)
-        if channel is None:
-            continue
-        async with locks[channel_id]:
-            try:
-                reply = await asyncio.to_thread(bot.on_tick, now_iso())
-            except Exception:
-                log.exception("on_tick failed")
-                continue
-        await say(channel, reply)
+        await tick_channel(channel_id, bot)
 
 
 def main():
