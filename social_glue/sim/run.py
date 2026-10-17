@@ -56,7 +56,8 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
     chat, reactions = [], []
     start = datetime(2026, 10, 1, 18)
     for day in range(days):
-        for turn in range(2):
+        quiet = rng.random() < 0.4  # some days nobody talks; the bot's timer path has to notice
+        for turn in range(0 if quiet else 2):
             p = rng.choice(personas)
             msg = p.reply(chat)
             msg["ts"] = (start + timedelta(days=day, hours=turn)).isoformat()
@@ -73,6 +74,12 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
                 chat.append({"name": "Glue", "text": text, "ts": msg["ts"]})
                 if verbose:
                     show("Glue", text, "bold red")
+        tick = (start + timedelta(days=day, hours=3)).isoformat()
+        text = bot.on_tick(tick)
+        if text:
+            chat.append({"name": "Glue", "text": text, "ts": tick})
+            if verbose:
+                show("Glue", text + "  (after a quiet stretch)", "bold red")
     episode = {"group": group, "transcript": chat, "reactions": reactions, "bot_messages": bot.history,
                "usage": dict(llm.USAGE), "playbook": bot.brain.playbook}
     episode["score"] = score(episode)

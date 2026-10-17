@@ -1,4 +1,9 @@
-"""Bot.on_message: listener -> curator -> governor -> planner."""
+"""Two entry points share one brain:
+- Bot.on_message(msg): listener -> curator -> governor -> planner (reacting to the chat)
+- Bot.on_tick(now): governor.decide_idle -> planner (speaking up after a quiet stretch)
+"""
+from datetime import datetime
+
 from social_glue.agents import curator, governor, listener, planner
 from social_glue.brain import Brain
 
@@ -23,9 +28,24 @@ class Bot:
             return None
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain)
-        kind = "ask" if reason == "addressed" else reason
-        self.history.append({"ts": msg["ts"], "kind": kind, "prompted": reason == "addressed", "text": text})
-        self.transcript.append({"name": self.name, "text": text, "ts": msg["ts"]})
+        return self._say(text, msg["ts"], "ask" if reason == "addressed" else reason, prompted=reason == "addressed")
+
+    def on_tick(self, now: str) -> str | None:
+        """Called on a clock (e.g. every evening). Lets the bot restart a chat that has gone quiet."""
+        self.last_notes = []
+        last = self.transcript[-1]["ts"] if self.transcript else None
+        reason = governor.decide_idle(self.brain, now, last, self.history)
+        if reason is None:
+            return None
+        days = (datetime.fromisoformat(now) - datetime.fromisoformat(last)).days if last else 0
+        recent = self.transcript if not self.use_brain else self.transcript[-3:]
+        note = f"The chat has been quiet for {days} days. Restart it with something concrete and low-effort to say yes to."
+        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note)
+        return self._say(text, now, reason, prompted=False)
+
+    def _say(self, text: str, ts: str, kind: str, prompted: bool) -> str:
+        self.history.append({"ts": ts, "kind": kind, "prompted": prompted, "text": text})
+        self.transcript.append({"name": self.name, "text": text, "ts": ts})
         return text
 
 
@@ -41,11 +61,15 @@ if __name__ == "__main__":
         ("Priya", "glue what are we doing this week?"),
     ]
     for i, (name, text) in enumerate(script):
-        msg = {"name": name, "text": text, "ts": f"2026-10-{12 + i:02d}T18:00:00"}
+        msg = {"name": name, "text": text, "ts": f"2026-10-{12 + i:02d}T18:00:00"}  # last msg on the 16th
         print(f"{name}: {text}")
         reply = bot.on_message(msg)
         for n in bot.last_notes:
             print(f"   [curator] {n}")
         if reply:
             print(f"Glue: {reply}")
+    quiet = "2026-10-20T19:00:00"
+    print(f"... (4 quiet days, tick at {quiet})")
+    if (reply := bot.on_tick(quiet)):
+        print(f"Glue: {reply}")
     print("\n--- brain ---\n" + bot.brain.render())

@@ -35,11 +35,14 @@ brain/
   playbook.md
 ```
 
-Turn loop: persona message → listener → curator patches brain → governor decides → (if speaking) planner writes from brain → message back into chat.
+Two paths share the brain:
+- Message: persona message → listener → curator patches brain → governor decides → (if speaking) planner writes from brain.
+- Timer: `on_tick` each evening → governor checks quiet days + weekly budget → planner proposes (or asks if it can't propose yet).
 
 ## Interface contract (frozen; change only after telling the other person)
 
 - `Bot.on_message(msg: dict) -> str | None` where `msg = {name, text, ts}`
+- `Bot.on_tick(now: str) -> str | None`: called on a clock; lets the bot restart a quiet chat (playbook `nudge_after_quiet_days`)
 - `Persona.reply(chat: list[dict]) -> dict` returning `{name, text, reaction}` (`reaction` in `none | annoyed | muted`)
 - `score(episode) -> dict` returning `plan_quality`, `annoyance`, `cost`, `score`
 - Brain fact shape: `{value, source_msg, ts, confidence}`
@@ -71,3 +74,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 14:35 Claude: re-scoped board after Thomas moved to the Slack bot; harness structure written down.
 - 14:55 Claude: harness v0 pushed: `python -m social_glue.bot` runs the full pipeline offline (FAKE_LLM), incl. the Thursday conflict.
 - 15:10 Claude: sim, score, reflector and evolve run offline. Fake-mode numbers are placeholders; real before/after needs Crusoe.
+- 15:00 Claude: added `Bot.on_tick` timer path so the bot proposes after a quiet stretch (Jeff's call).

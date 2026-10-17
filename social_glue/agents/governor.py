@@ -12,6 +12,25 @@ def budget(playbook: str) -> int:
     return int(m.group(1)) if m else 3
 
 
+def quiet_days(playbook: str) -> int:
+    m = re.search(r"nudge_after_quiet_days:\s*(\d+)", playbook)
+    return int(m.group(1)) if m else 3
+
+
+def decide_idle(brain: Brain, now: str, last_activity: str | None, bot_history: list[dict]) -> str | None:
+    """Timer path: after a quiet stretch, restart the chat with a proposal (or a question if we can't propose yet)."""
+    t = datetime.fromisoformat(now)
+    if last_activity and t - datetime.fromisoformat(last_activity) < timedelta(days=quiet_days(brain.playbook)):
+        return None
+    week = [b for b in bot_history if not b["prompted"] and datetime.fromisoformat(b["ts"]) > t - timedelta(days=7)]
+    if len(week) >= budget(brain.playbook):
+        return None
+    people = brain.people()
+    if len([p for p in people if "availability" in brain.facts(p)]) >= 2:
+        return "propose"
+    return "ask" if people else None
+
+
 def decide(brain: Brain, msg: dict, bot_history: list[dict]) -> str | None:
     """Returns the reason to speak ("addressed", "propose", "ask"), or None to stay quiet.
 

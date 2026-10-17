@@ -29,7 +29,9 @@ def _fake(brain: Brain, reason: str, events: list[dict], recent: list[dict], use
     if reason == "propose":
         # Without the brain, the offline stand-in just grabs the last day anyone mentioned.
         days = _common_days(brain) if use_brain else _last_day_mentioned(recent)
-        day = days[0][:-1] if days else "Sunday"
+        if not days:
+            return "No single day works for everyone yet. Anyone flexible on Tuesdays or Thursdays?"
+        day = days[0][:-1]
         ev = f" Maybe: {events[0]['title']}?" if events else ""
         return f"Looks like {day} works for everyone who's shared. Call at 7pm this {day}?{ev}"
     missing = [p.capitalize() for p in brain.people() if "availability" not in brain.facts(p)]
@@ -38,7 +40,7 @@ def _fake(brain: Brain, reason: str, events: list[dict], recent: list[dict], use
     return "On it! Tell me which days work and I'll find a time."
 
 
-def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True) -> str:
+def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, note: str = "") -> str:
     events = []
     if reason == "propose":
         interests = ", ".join(brain.facts(p)["interests"]["value"] for p in brain.people() if "interests" in brain.facts(p))
@@ -49,5 +51,6 @@ def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True) 
         f"{'BRAIN' if use_brain else 'FULL TRANSCRIPT'}:\n{context}\n\n"
         f"EVENTS:\n" + "\n".join(f"- {e['title']}: {e['snippet']}" for e in events) + "\n\n"
         f"LAST MESSAGES:\n" + "\n".join(f"{m['name']}: {m['text']}" for m in recent[-3:])
+        + (f"\n\nNOTE: {note}" if note else "")
     )
     return llm.chat(SYSTEM.format(reason=reason), user, tier="strong", fake=lambda: _fake(brain, reason, events, recent, use_brain))
