@@ -1,4 +1,5 @@
-"""Crusoe Managed Inference client. Falls back to a fake LLM when no key is set (FAKE_LLM=1 forces it)."""
+"""Model client. Crusoe Managed Inference by default; LLM_PROVIDER=anthropic switches to Claude.
+Falls back to a fake LLM when the chosen provider has no key (FAKE_LLM=1 forces it)."""
 import json
 import os
 
@@ -15,8 +16,29 @@ USAGE = {"calls": 0, "prompt_tokens": 0}
 _client = None
 
 
+def _provider() -> str:
+    return (os.getenv("LLM_PROVIDER") or "crusoe").lower()
+
+
 def is_fake() -> bool:
-    return os.getenv("FAKE_LLM") == "1" or not os.getenv("CRUSOE_API_KEY")
+    key = "ANTHROPIC_API_KEY" if _provider() == "anthropic" else "CRUSOE_API_KEY"
+    return os.getenv("FAKE_LLM") == "1" or not os.getenv(key)
+
+
+def _anthropic_text(system: str, user: str, tier: str, json_mode: bool):
+    global _client
+    if _client is None:
+        import anthropic
+
+        _client = anthropic.Anthropic()
+    model = os.getenv("ANTHROPIC_MODEL_STRONG" if tier == "strong" else "ANTHROPIC_MODEL_FAST") or (
+        "claude-sonnet-5-5" if tier == "strong" else "claude-haiku-5-5")
+    if json_mode:
+        system += "\n\nRespond with a single JSON object and nothing else."
+    resp = _client.messages.create(model=model, max_tokens=1024, system=system,
+                                   messages=[{"role": "user", "content": user}])
+    USAGE["prompt_tokens"] += resp.usage.input_tokens
+    return "".join(b.text for b in resp.content if b.type == "text")
 
 
 def _get_client():
@@ -46,6 +68,10 @@ def chat(system: str, user: str, tier: str = "strong", json_mode: bool = False, 
         out = fake() if fake else ("{}" if json_mode else "")
         return out if not isinstance(out, str) or not json_mode else json.loads(out)
 
+    if _provider() == "anthropic":
+        text = _anthropic_text(system, user, tier, json_mode)
+        return _parse(text, json_mode)
+
     kwargs = {}
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
@@ -58,7 +84,10 @@ def chat(system: str, user: str, tier: str = "strong", json_mode: bool = False, 
         resp = _get_client().chat.completions.create(model=_model(tier), messages=messages, temperature=0.4)
     if resp.usage:
         USAGE["prompt_tokens"] += resp.usage.prompt_tokens
-    text = resp.choices[0].message.content or ""
+    return _parse(resp.choices[0].message.content or "", json_mode)
+
+
+def _parse(text: str, json_mode: bool):
     if not json_mode:
         return text.strip()
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
