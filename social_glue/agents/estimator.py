@@ -10,7 +10,7 @@ import json
 import math
 
 from social_glue import llm
-from social_glue.agents import interests
+from social_glue.agents import interests, listener, slots
 from social_glue.brain import Brain
 
 SYSTEM = """You predict how a friend group will react to hangout proposals.
@@ -40,11 +40,23 @@ def candidates(brain: Brain, activity: str, events: list[dict]) -> list[dict]:
     people = brain.people()
     avail = {p: [d.strip() for d in brain.facts(p).get("availability", {}).get("value", "").split(",") if d.strip()] for p in people}
     if activity == "call":
-        days = [d for d in DAYS if any(d in a for a in avail.values())] or ["Sundays"]
-        return [{"id": i, "activity": "call", "option": f"video call {d[:-1]} 7pm", "day": d} for i, d in enumerate(days)]
+        days = [d for d in DAYS if any(d in a for a in avail.values()) or any(d in w for p in people for w in slots.windows(brain, p))] or ["Sundays"]
+        out = []
+        for i, d in enumerate(days):
+            start, free = slots.best_start(brain, d)
+            out.append({"id": i, "activity": "call", "option": f"video call {d[:-1]} {slots.fmt(start)}", "day": d, "free": free})
+        return out
     if activity == "event":
-        return [{"id": i, "activity": "event", "option": e["title"], "day": next((d for d in DAYS if d[:-1].lower() in e["title"].lower()), "Saturdays")}
-                for i, e in enumerate(events[:3])] or [{"id": 0, "activity": "event", "option": "a show downtown", "day": "Saturdays"}]
+        out = []
+        for i, e in enumerate(events[:5] or [{"title": "a show downtown", "snippet": "8pm-10pm"}]):
+            text = f"{e['title']} {e.get('snippet', '')}"
+            day = next((d for d in DAYS if d[:-1].lower() in text.lower()), "Saturdays")
+            window = listener._window(text.lower())  # event time from the listing, e.g. "7pm-9pm"
+            start, end = (int(window[:2]) * 60 + int(window[3:5]), int(window[6:8]) * 60 + int(window[9:])) if window else (19 * 60, 21 * 60)
+            free, known = slots.free_for(brain, day, start, end - start)
+            out.append({"id": i, "activity": "event", "option": f"{e['title']} ({day[:-1]} {slots.fmt(start)})", "day": day,
+                        "free": free, "known": known})
+        return out
     return [{"id": i, "activity": "trip", "option": t["option"], "tags": t["tags"], "day": None} for i, t in enumerate(TRIPS)]
 
 
@@ -52,7 +64,11 @@ def _heuristic(brain: Brain, c: dict) -> dict:
     """Offline stand-in: interest slider x availability fit for acceptance; taste overlap for satisfaction."""
     people = brain.people() or ["?"]
     level = interests.load(brain)[c["activity"]]["level"]
-    if c["day"]:
+    if c["activity"] == "event" and c.get("known", 0) >= 2:
+        fit = c["free"] / len(people)
+    elif c.get("free") is not None and c["activity"] == "call" and any(slots.windows(brain, p) for p in people):
+        fit = c["free"] / len(people)
+    elif c["day"]:
         fit = sum(1 for p in people if c["day"] in brain.facts(p).get("availability", {}).get("value", "")) / len(people)
         fit = 0.5 if all("availability" not in brain.facts(p) for p in people) else fit
     else:

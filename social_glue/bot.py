@@ -2,11 +2,14 @@
 - Bot.on_message(msg): listener -> curator -> tracker (reads replies to proposals/probes) -> governor -> planner
 - Bot.on_tick(now):    tracker (silence = weak no) -> governor.decide_idle (what's due: propose / probe) -> planner
 """
+import re
 from datetime import datetime
 
 from social_glue.agents import curator, estimator, governor, interests, listener, planner, tracker, values
 from social_glue.tools import search_events
 from social_glue.brain import Brain
+
+PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
 
 
 class Bot:
@@ -42,7 +45,17 @@ class Bot:
                 sliders = interests.load(self.brain)
                 activity = max(sliders, key=lambda a: sliders[a]["level"])
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
-        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, activity=activity)
+        note = ""
+        if reason == "addressed" and PLAN_ASK.search(msg["text"]):
+            # A direct ask to plan skips the timer and its gates: propose the best option now, whatever the bar.
+            sliders = interests.load(self.brain)
+            activity = interests.detect(msg["text"]) or max(sliders, key=lambda a: sliders[a]["level"])
+            best = self._best_candidate(activity, bar=0.0)
+            if best:
+                reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}." + self._availability_ask(best)
+                interests.mark(self.brain, activity, "last_proposed", msg["ts"])
+                self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
+        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.
         return self._say(text, msg["ts"], reason, activity, prompted=True)
 
@@ -69,7 +82,7 @@ class Bot:
             if best is None:
                 reason = "probe"  # nothing concrete looks good enough; ask instead of pushing
             else:
-                note += f" Propose exactly this: {best['option']}."
+                note += f" Propose exactly this: {best['option']}." + self._availability_ask(best)
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
         if reason in ("propose", "probe", "ask"):
@@ -79,16 +92,26 @@ class Bot:
             self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
         return text
 
-    def _best_candidate(self, activity: str, penalty: float = 0.0) -> dict | None:
+    def _best_candidate(self, activity: str, penalty: float = 0.0, bar: float | None = None) -> dict | None:
         """Estimate every candidate for this activity; return the best if its chance of success clears the bar
-        (value threshold plus the recency penalty)."""
+        (value threshold plus the recency penalty, unless an explicit bar is given)."""
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
             events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
-        ranked = estimator.estimate(self.brain, estimator.candidates(self.brain, activity, events))
-        bar = values.threshold(values.load(self.brain)) + penalty
+        cands = estimator.candidates(self.brain, activity, events)
+        # Step 2 for events: availability is a given. Drop events we know too few people can make;
+        # keep ones we lack data for, and ask about the time when proposing them.
+        cands = [c for c in cands if c["activity"] != "event" or c["free"] >= min(2, c["known"])]
+        ranked = estimator.estimate(self.brain, cands)
+        bar = values.threshold(values.load(self.brain)) + penalty if bar is None else bar
         return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
+
+    @staticmethod
+    def _availability_ask(best: dict) -> str:
+        if best["activity"] == "event" and best.get("known", 0) < 2:
+            return " We don't know who's free then, so ask who can make that time."
+        return ""
 
     def _say(self, text: str, ts: str, kind: str, activity: str | None, prompted: bool) -> str:
         self.history.append({"ts": ts, "kind": kind, "activity": activity, "prompted": prompted, "text": text})

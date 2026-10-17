@@ -55,7 +55,9 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
     if reason == "probe":
         return PROBE[activity]
     if reason == "propose" and "Propose exactly this: " in note:
-        option = note.split("Propose exactly this: ")[1].rstrip(".")
+        option = note.split("Propose exactly this: ")[1].split(". ")[0].rstrip(".")
+        if "ask who can make" in note:
+            return f"How about {option}? Who can make that time?"
         return f"How about {option}? Who's in?"
     if reason == "propose":
         # Without the brain, the offline stand-in just grabs the last day anyone mentioned.

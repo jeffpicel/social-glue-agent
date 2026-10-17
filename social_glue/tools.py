@@ -8,13 +8,13 @@ CACHE = Path("cache/events")
 
 FALLBACK = [
     {"title": "Sunday farmers market + live jazz", "url": "", "snippet": "Free, outdoors, 10am-2pm"},
-    {"title": "Thursday trivia night at a local brewery", "url": "", "snippet": "Teams up to 6, starts 7pm"},
-    {"title": "Saturday board game cafe meetup", "url": "", "snippet": "$10 cover, all levels"},
+    {"title": "Thursday trivia night at a local brewery", "url": "", "snippet": "Teams up to 6, 7pm-9pm"},
+    {"title": "Saturday board game cafe meetup", "url": "", "snippet": "$10 cover, all levels, 6:30pm-9:30pm"},
 ]
 
 
 def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
-    query = f"events in {city} {when} for people into {interests}"
+    query = f"events in {city} {when} for people into {interests} (partiful OR lu.ma OR eventbrite) date time"
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / (hashlib.sha1(query.encode()).hexdigest()[:12] + ".json")
     if path.exists():
@@ -25,9 +25,20 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
         try:
             import requests
 
-            r = requests.get("https://api.ydc-index.io/search", params={"query": query}, headers={"X-API-Key": key}, timeout=10)
-            r.raise_for_status()
-            hits = r.json().get("hits", [])[:5]
+            hits, err = [], None
+            # Newer keys only work on ydc-index.io/v1 (results.web); older ones on api.ydc-index.io (hits).
+            for url in ("https://ydc-index.io/v1/search", "https://api.ydc-index.io/search"):
+                try:
+                    r = requests.get(url, params={"query": query}, headers={"X-API-Key": key}, timeout=10)
+                    r.raise_for_status()
+                    body = r.json()
+                    hits = (body.get("results") or {}).get("web") or body.get("hits") or []
+                    hits = hits[:5]
+                    break
+                except Exception as e:  # noqa: BLE001
+                    err = e
+            if not hits and err:
+                raise err
             results = [{"title": h.get("title", ""), "url": h.get("url", ""), "snippet": (h.get("snippets") or [h.get("description", "")])[0]} for h in hits] or FALLBACK
         except Exception as e:  # noqa: BLE001 - demo must not crash on search
             print(f"[you.com] falling back to canned events: {e}")
