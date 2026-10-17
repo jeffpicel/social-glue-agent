@@ -1,0 +1,72 @@
+{
+  "city": "Oakland",
+  "members": [
+    {
+      "name": "Ana",
+      "availability": [
+        "Sundays",
+        "Wednesdays"
+      ],
+      "interests": [
+        "trivia",
+        "food"
+      ],
+      "budget": 35,
+      "annoyance_threshold": 2,
+      "lines": [
+        "we should do something soon!!",
+        "I'm obsessed with trivia nights"
+      ]
+    },
+    {
+      "name": "Ben",
+      "availability": [
+        "Sundays"
+      ],
+      "interests": [
+        "trivia",
+        "climbing"
+      ],
+      "budget": 50,
+      "annoyance_threshold": 3,
+      "lines": [
+        "new job starts monday, wish me luck",
+        "I can't do Wednesdays anymore, late shifts"
+      ]
+    },
+    {
+      "name": "Chloe",
+      "availability": [
+        "Sundays",
+        "Fridays"
+      ],
+      "interests": [
+        "food",
+        "movies"
+      ],
+      "budget": 30,
+      "annoyance_threshold": 2,
+      "lines": [
+        "who's seen the new dune",
+        "I like trying new food spots"
+      ]
+    },
+    {
+      "name": "Dev",
+      "availability": [
+        "Sundays",
+        "Wednesdays"
+      ],
+      "interests": [
+        "climbing",
+        "trivia"
+      ],
+      "budget": 40,
+      "annoyance_threshold": 3,
+      "lines": [
+        "climbing gym was packed today"
+      ]
+    }
+  ],
+  "id": "heldout_1"
+}

@@ -21,6 +21,8 @@ Inference runs on Crusoe Managed Inference; event and destination search uses Yo
 pip install -r requirements.txt
 cp .env.example .env   # add Crusoe + You.com keys; leave empty to run offline with FAKE_LLM
 python -m social_glue.bot   # scripted 5-message chat through listener -> curator -> governor -> planner
-```
 
-`sim/run.py` (simulated friend groups and scores) is next; see TASKS.md.
+python -m social_glue.sim.run --group train_1          # simulated 2-week group chat, brain/ updates live
+python -m social_glue.sim.run --group heldout_1 --no-brain
+python -m social_glue.evolve --rounds 2                # reflect on train, keep playbook edits that help, held-out table -> results/
+```

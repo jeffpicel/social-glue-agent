@@ -17,9 +17,18 @@ def _common_days(brain: Brain) -> list[str]:
     return sorted(set.intersection(*sets)) if sets else []
 
 
-def _fake(brain: Brain, reason: str, events: list[dict]) -> str:
+def _last_day_mentioned(recent: list[dict]) -> list[str]:
+    for m in reversed(recent):
+        for d in ["Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"]:
+            if d[:-1].lower() in m["text"].lower():
+                return [d]
+    return []
+
+
+def _fake(brain: Brain, reason: str, events: list[dict], recent: list[dict], use_brain: bool) -> str:
     if reason == "propose":
-        days = _common_days(brain)
+        # Without the brain, the offline stand-in just grabs the last day anyone mentioned.
+        days = _common_days(brain) if use_brain else _last_day_mentioned(recent)
         day = days[0][:-1] if days else "Sunday"
         ev = f" Maybe: {events[0]['title']}?" if events else ""
         return f"Looks like {day} works for everyone who's shared. Call at 7pm this {day}?{ev}"
@@ -41,4 +50,4 @@ def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True) 
         f"EVENTS:\n" + "\n".join(f"- {e['title']}: {e['snippet']}" for e in events) + "\n\n"
         f"LAST MESSAGES:\n" + "\n".join(f"{m['name']}: {m['text']}" for m in recent[-3:])
     )
-    return llm.chat(SYSTEM.format(reason=reason), user, tier="strong", fake=lambda: _fake(brain, reason, events))
+    return llm.chat(SYSTEM.format(reason=reason), user, tier="strong", fake=lambda: _fake(brain, reason, events, recent, use_brain))
