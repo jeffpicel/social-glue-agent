@@ -55,7 +55,7 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
     appetite = dict(group["appetite"])  # shared by all personas; drift mutates it mid-episode
     personas = [Persona(m, rng, appetite) for m in group["members"]]
     color = {p.name: COLORS[i % len(COLORS)] for i, p in enumerate(personas)}
-    chat, reactions = [], []
+    chat = []
     for day in range(days):
         for a, (when, level) in group.get("drift", {}).items():
             if day == when:
@@ -68,10 +68,8 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
             msg = p.reply(chat)
             msg["ts"] = (start + timedelta(days=day, hours=turn)).isoformat()
             chat.append(msg)
-            if msg["reaction"] != "none":
-                reactions.append(msg["reaction"])
             if verbose:
-                show(p.name, msg["text"] + ("" if msg["reaction"] == "none" else f"  [{msg['reaction']}]"), color[p.name])
+                show(p.name, msg["text"], color[p.name])
             text = bot.on_message({k: msg[k] for k in ("name", "text", "ts")})
             if verbose:
                 for n in bot.last_notes:
@@ -89,7 +87,7 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
             chat.append({"name": "Glue", "text": text, "ts": tick})
             if verbose:
                 show("Glue", text + f"  ({bot.history[-1]['kind']}: {bot.history[-1]['activity']})", "bold red")
-    episode = {"group": group, "transcript": chat, "reactions": reactions, "bot_messages": bot.history,
+    episode = {"group": group, "transcript": chat, "bot_messages": bot.history,
                "usage": dict(llm.USAGE), "playbook": bot.brain.playbook, "meetups": bot.meetups,
                "days": days, "start": start.isoformat(), "decisions": bot.decisions}
     episode["score"] = score(episode)

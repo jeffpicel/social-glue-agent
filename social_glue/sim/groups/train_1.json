@@ -11,7 +11,6 @@
         "live music"
       ],
       "budget": 40,
-      "annoyance_threshold": 3,
       "lines": [
         "omg it's been forever since we all hung out",
         "I'm free Tuesdays and Thursdays after 6",
@@ -29,7 +28,6 @@
         "live music"
       ],
       "budget": 30,
-      "annoyance_threshold": 1,
       "lines": [
         "I love board games and live music",
         "work is chaos this week lol"
@@ -46,7 +44,6 @@
         "food"
       ],
       "budget": 60,
-      "annoyance_threshold": 4,
       "lines": [
         "ugh work has been insane",
         "I'm really into hiking lately"
@@ -63,7 +60,6 @@
         "food"
       ],
       "budget": 25,
-      "annoyance_threshold": 1,
       "lines": [
         "sup",
         "anyone watching the game tonight"

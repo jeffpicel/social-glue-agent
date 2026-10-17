@@ -18,7 +18,7 @@ from social_glue.sim.run import GROUPS, load_group, run_episode
 
 TRAIN_SEEDS = [0, 1]
 EVAL_SEEDS = [100, 101, 102]
-SHOW = ["score", "f1", "precision", "recall", "fp", "fn", "annoyance", "probes", "cost"]
+SHOW = ["score", "accuracy", "tp", "fp", "fn", "tn", "precision", "recall", "messages", "probes", "cost"]
 
 
 def evaluate(group: dict, playbook: str, seeds: list[int], **kw) -> tuple[dict, list[dict]]:

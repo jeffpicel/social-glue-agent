@@ -10,8 +10,8 @@ You get the current playbook, a transcript, and its score: a confusion matrix ov
 - FN = the group wanted an activity and we never offered it; fn_reasons says why (unexplored = never probed a low
   belief, misread = probed but belief stayed low, nudge_budget / waiting_for_quiet / no_availability = wanted to
   propose but a gate blocked it, not_due = cadence too long).
-- annoyance = people irritated by out-of-the-blue messages.
-Change the knobs and style lines to raise F1 and cut annoyance. Keep every "- key: number" knob line (code parses them)
+- score = accuracy over TP/FP/FN/TN minus a light penalty per bot message (bursts of planning are fine).
+Change the knobs and style lines to raise the score. Keep every "- key: number" knob line (code parses them)
 and the markdown format. Return only the new playbook."""
 
 
@@ -28,9 +28,8 @@ def _set(playbook: str, key: str, fn) -> str:
 def _fake(playbook: str, s: dict) -> str:
     """Offline stand-in: simple rules over the same signals the model sees."""
     reasons = s.get("fp_reasons", {})
-    if s["annoyance"] > 0:
+    if reasons.get("ignored", 0):
         playbook = _set(playbook, "max_ignored_nudges_per_week", lambda v: max(1, v // 2))
-        playbook = _set(playbook, "propose_after_quiet_days", lambda v: v + 1)
         playbook = _set(playbook, "repropose_after_days", lambda v: v + 2)
     if reasons.get("activity", 0) >= max(reasons.get("timing", 0), reasons.get("specifics", 0), 1):
         playbook = _set(playbook, "probe_below", lambda v: min(0.6, v + 0.1))
@@ -41,7 +40,7 @@ def _fake(playbook: str, s: dict) -> str:
         playbook = _set(playbook, "learning_rate", lambda v: min(0.6, v + 0.1))
     if fn.get("waiting_for_quiet", 0):
         playbook = _set(playbook, "propose_after_quiet_days", lambda v: max(0, v - 1))
-    if fn.get("nudge_budget", 0) and s["annoyance"] == 0:
+    if fn.get("nudge_budget", 0) and not reasons.get("ignored", 0):
         playbook = _set(playbook, "max_ignored_nudges_per_week", lambda v: v + 1)
     return playbook
 

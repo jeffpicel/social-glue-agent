@@ -44,7 +44,7 @@ Two paths share the brain:
 
 - **Interest sliders, not group types.** `brain/interests.md` holds a 0–1 slider per activity (call, event, trip). High sliders are exploited (propose when due by cadence); low sliders get occasional light probes, since otherwise we'd never get feedback. Groups drift, so probing never fully stops.
 - **Every "no" has a reason** (activity / timing / specifics) and updates the right thing: the slider, availability, or tastes.
-- **Score = confusion matrix over (activity, week):** TP proposed and taken, FP proposed and declined (with reason), FN wanted but never offered (with reason: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, not_due), TN. `score = F1 − 0.1 × annoyance`.
+- **Score = confusion matrix over (activity, week):** TP proposed and taken, FP proposed and declined (with reason), FN wanted but never offered (with reason: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, not_due), TN. `score = accuracy − 0.005 × bot messages` (light on purpose: planning bursts are fine). No annoyance term.
 - **Version N+1 is per group:** a group's playbook improves from its own history; proof is v0 vs vN on fresh, unseen simulated runs of that group. No cross-group learning.
 - **Timer path initiates, chat path reacts.** `on_tick` proposes/probes; `on_message` answers and fills gaps.
 
@@ -52,8 +52,8 @@ Two paths share the brain:
 
 - `Bot.on_message(msg: dict) -> str | None` where `msg = {name, text, ts}`
 - `Bot.on_tick(now: str) -> str | None`: called on a clock; lets the bot restart a quiet chat (playbook `nudge_after_quiet_days`)
-- `Persona.reply(chat: list[dict]) -> dict` returning `{name, text, reaction}` (`reaction` in `none | annoyed | muted`)
-- `score(episode) -> dict` returning `score`, `f1`, `precision`, `recall`, `tp/fp/fn/tn`, `fp_reasons`, `fn_reasons`, `annoyance`, `cost`
+- `Persona.reply(chat: list[dict]) -> dict` returning `{name, text}`
+- `score(episode) -> dict` returning `score`, `f1`, `precision`, `recall`, `tp/fp/fn/tn`, `fp_reasons`, `fn_reasons`, `messages`, `cost`
 - Brain fact shape: `{value, source_msg, ts, confidence}`
 
 ## Board
@@ -88,3 +88,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 15:25 Claude: budget now counts only ignored nudges (`max_ignored_nudges_per_week`), so busy planning weeks aren't capped; pitch reframed to Version N+1 first.
 - 15:30 Claude: Thomas is on a Discord deployment; the adapter only needs `Bot.on_message` and `Bot.on_tick`.
 - 15:05 Claude: interest sliders (explore/exploit), decline reasons, confusion-matrix score with FP/FN reasons, per-group N+1 loop. Offline: vN cuts annoyance a lot but recall stays low; real numbers need Crusoe.
+- 15:08 Claude: dropped annoyance; score is accuracy minus a light per-message penalty.

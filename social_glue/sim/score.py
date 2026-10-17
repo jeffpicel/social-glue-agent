@@ -1,4 +1,4 @@
-"""score(episode): a confusion matrix over (activity, week) decisions, plus annoyance.
+"""score(episode): accuracy of a confusion matrix over (activity, week) decisions, with a light message penalty.
 
 For each activity and each 7-day window:
 - TP: we proposed it and the group took it (confirmed)
@@ -10,8 +10,9 @@ For each activity and each 7-day window:
       nudge_budget / waiting_for_quiet / no_availability (wanted to propose but was blocked),
       not_due (belief high but cadence said not yet)
 - TN: we didn't offer it and they didn't want it
-Probes are exploration (how FNs get found) and are counted separately; they cost only through annoyance.
-score = F1 - 0.1 * annoyance
+Probes are exploration (how FNs get found); they count only as messages.
+score = accuracy - 0.005 * bot messages
+The message penalty is deliberately light: a burst of back-and-forth to plan a trip is fine.
 """
 from collections import Counter
 from datetime import datetime
@@ -30,7 +31,7 @@ def fn_reason(activity: str, window_days: range, decisions: list[dict], probes: 
         return "misread" if probed else "unexplored"
     return "not_due"
 
-W_ANNOY = 0.1
+W_MSG = 0.005
 WINDOW = 7
 
 
@@ -67,12 +68,14 @@ def score(episode: dict) -> dict:
     precision = tp / (tp + fp) if tp + fp else 1.0
     recall = tp / (tp + fn) if tp + fn else 1.0
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
-    annoyance = sum(1 for r in episode["reactions"] if r == "annoyed") + 2 * sum(1 for r in episode["reactions"] if r == "muted")
+    total = tp + fp + fn + tn
+    accuracy = (tp + tn) / total if total else 1.0
+    messages = len(episode["bot_messages"])
     usage = episode["usage"]
     return {
-        "score": round(f1 - W_ANNOY * annoyance, 3), "f1": round(f1, 3),
+        "score": round(accuracy - W_MSG * messages, 3), "accuracy": round(accuracy, 3), "f1": round(f1, 3),
         "precision": round(precision, 3), "recall": round(recall, 3),
         "tp": tp, "fp": fp, "fn": fn, "tn": tn, "fp_reasons": dict(fp_reasons), "fn_reasons": dict(fn_reasons),
-        "probes": len(probes), "annoyance": annoyance,
+        "probes": len(probes), "messages": messages,
         "cost": round(usage["prompt_tokens"] / max(usage["calls"], 1), 1),
     }
