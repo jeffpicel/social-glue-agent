@@ -10,9 +10,15 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-import discord
-from discord.ext import tasks
-from dotenv import load_dotenv
+import certifi
+
+# python.org builds on macOS ship without root certs, so aiohttp can't verify discord.com.
+# Must be set before aiohttp is imported, since it builds its SSL context at import time.
+os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+
+import discord  # noqa: E402
+from discord.ext import tasks  # noqa: E402
+from dotenv import load_dotenv  # noqa: E402
 
 load_dotenv()
 
@@ -92,7 +98,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     for cid in ALLOWED:  # so the timer runs for configured channels even before anyone speaks
         bot_for(cid)
-    client.run(os.environ["DISCORD_BOT_TOKEN"], log_handler=None)
+    client.run(os.getenv("DISCORD_BOT_TOKEN") or os.environ["DISCORD_TOKEN"], log_handler=None)
 
 
 if __name__ == "__main__":
