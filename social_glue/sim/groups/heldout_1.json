@@ -1,0 +1,81 @@
+{
+  "city": "Oakland",
+  "members": [
+    {
+      "name": "Ana",
+      "availability": [
+        "Sundays",
+        "Wednesdays"
+      ],
+      "interests": [
+        "trivia",
+        "food"
+      ],
+      "budget": 35,
+      "lines": [
+        "we should do something soon!!",
+        "I'm obsessed with trivia nights"
+      ]
+    },
+    {
+      "name": "Ben",
+      "availability": [
+        "Sundays"
+      ],
+      "interests": [
+        "trivia",
+        "climbing"
+      ],
+      "budget": 50,
+      "lines": [
+        "new job starts monday, wish me luck",
+        "I can't do Wednesdays anymore, late shifts"
+      ]
+    },
+    {
+      "name": "Chloe",
+      "availability": [
+        "Sundays",
+        "Fridays"
+      ],
+      "interests": [
+        "food",
+        "movies"
+      ],
+      "budget": 30,
+      "lines": [
+        "who's seen the new dune",
+        "I like trying new food spots"
+      ]
+    },
+    {
+      "name": "Dev",
+      "availability": [
+        "Sundays",
+        "Wednesdays"
+      ],
+      "interests": [
+        "climbing",
+        "trivia"
+      ],
+      "budget": 40,
+      "lines": [
+        "climbing gym was packed today"
+      ]
+    }
+  ],
+  "id": "heldout_1",
+  "appetite": {
+    "call": 0.1,
+    "event": 0.9,
+    "trip": 0.3
+  },
+  "drift": {},
+  "values": {
+    "tp": 1.0,
+    "fn": 0.4,
+    "fp": 0.5,
+    "tn": 0.1,
+    "msg": 0.01
+  }
+}

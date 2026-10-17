@@ -1,0 +1,71 @@
+{
+  "city": "Berkeley",
+  "members": [
+    {
+      "name": "Eli",
+      "availability": [
+        "Saturdays",
+        "Mondays"
+      ],
+      "interests": [
+        "jazz",
+        "coffee"
+      ],
+      "budget": 30,
+      "lines": [
+        "coffee this weekend anyone?",
+        "I'm into jazz lately"
+      ]
+    },
+    {
+      "name": "Fatima",
+      "availability": [
+        "Saturdays"
+      ],
+      "interests": [
+        "jazz",
+        "art"
+      ],
+      "budget": 45,
+      "lines": [
+        "museum had a great exhibit",
+        "I can't do Mondays, I have class"
+      ]
+    },
+    {
+      "name": "Gus",
+      "availability": [
+        "Saturdays",
+        "Fridays"
+      ],
+      "interests": [
+        "coffee",
+        "art"
+      ],
+      "budget": 25,
+      "lines": [
+        "lol",
+        "broke until payday, $25 max for anything"
+      ]
+    }
+  ],
+  "id": "heldout_2",
+  "appetite": {
+    "call": 0.7,
+    "event": 0.0,
+    "trip": 0.8
+  },
+  "drift": {
+    "call": [
+      8,
+      0.3
+    ]
+  },
+  "values": {
+    "tp": 1.5,
+    "fn": 0.9,
+    "fp": 0.3,
+    "tn": 0.02,
+    "msg": 0.005
+  }
+}

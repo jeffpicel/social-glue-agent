@@ -8,7 +8,7 @@ An agent that lives in a friends' group chat, keeps a **shared brain** of everyo
 ## 2. Track fit
 - **Primary: Shared Brain.** The brain is a set of living files (one per person, plus one for the group) that every sub-agent reads before it acts and patches afterwards. Judges want to see three things here: the brain stays **current** (patches carry a timestamp and a source message), **lean** (a curator compacts and drops stale facts) and **conflict-free** (the curator resolves contradictions such as "Sam is free Tuesdays" vs. "Sam started a Tuesday class"). Show a **measurable gain**: plan quality and tokens per turn, with the brain vs. without it (raw transcript stuffed into the prompt).
 - **Secondary: Version N+1.** "Learn not to overdo it" becomes a self-rewriting `playbook.md`: nudge budget, when to ask vs. propose, tone. After each simulated episode a Reflector proposes a playbook edit. The edit is **kept only if** it improves the score on held-out simulated groups. That gives a before/after number on unseen tasks, which is exactly what the track asks for.
-- Pitch it as Shared Brain with an N+1 loop on top. Don't split the demo time evenly between the two.
+- **Update 2:50 PM:** pitch it as **Version N+1 first**: a social agent that learns how pushy to be, proven by before/after scores on held-out groups. The shared brain is the substrate that makes that possible; show it, but don't lead with it.
 
 ## 3. The technical core: a friend-group simulator
 Without real users you can't measure anything, so build **simulated friends** (LLM personas). The simulator is what makes this "beyond an average hackathon project".

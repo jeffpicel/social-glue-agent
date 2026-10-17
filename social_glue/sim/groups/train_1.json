@@ -1,0 +1,88 @@
+{
+  "city": "San Francisco",
+  "members": [
+    {
+      "name": "Maya",
+      "availability": [
+        "Tuesdays"
+      ],
+      "interests": [
+        "pottery",
+        "live music"
+      ],
+      "budget": 40,
+      "lines": [
+        "omg it's been forever since we all hung out",
+        "I'm free Tuesdays and Thursdays after 6",
+        "actually Thursdays are out now, I started a pottery class"
+      ]
+    },
+    {
+      "name": "Sam",
+      "availability": [
+        "Tuesdays",
+        "Thursdays"
+      ],
+      "interests": [
+        "board games",
+        "live music"
+      ],
+      "budget": 30,
+      "lines": [
+        "I love board games and live music",
+        "work is chaos this week lol"
+      ]
+    },
+    {
+      "name": "Priya",
+      "availability": [
+        "Tuesdays",
+        "Sundays"
+      ],
+      "interests": [
+        "hiking",
+        "food"
+      ],
+      "budget": 60,
+      "lines": [
+        "ugh work has been insane",
+        "I'm really into hiking lately"
+      ]
+    },
+    {
+      "name": "Leo",
+      "availability": [
+        "Tuesdays",
+        "Saturdays"
+      ],
+      "interests": [
+        "board games",
+        "food"
+      ],
+      "budget": 25,
+      "lines": [
+        "sup",
+        "anyone watching the game tonight"
+      ]
+    }
+  ],
+  "id": "train_1",
+  "appetite": {
+    "call": 0.8,
+    "event": 0.6,
+    "trip": 0.1
+  },
+  "drift": {
+    "trip": [
+      7,
+      0.8
+    ]
+  },
+  "values": {
+    "tp": 1.2,
+    "fn": 0.8,
+    "fp": 0.2,
+    "tn": 0.05,
+    "msg": 0.003
+  }
+}

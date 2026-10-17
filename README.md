@@ -4,8 +4,8 @@ An agent that lives in a friends' group chat, keeps a **shared brain** of everyo
 
 Built today at the Crusoe Recursive Agents Hackathon (Oct 17, 2026).
 
-- **Shared Brain:** living files (`brain/people/<name>.md`, `brain/group.md`) that every sub-agent reads before acting and a curator keeps current, lean and conflict-free.
-- **Version N+1:** a self-rewriting `brain/playbook.md` (nudge budget, ask vs. propose, tone). Edits are kept only if they improve the score on held-out simulated groups.
+- **Version N+1 (primary):** a self-rewriting `brain/playbook.md` (when to nudge, how long to wait after a meetup, ask vs. propose, tone). Edits are kept only if they improve the score on held-out simulated groups.
+- **Shared Brain (supporting):** living files (`brain/people/<name>.md`, `brain/group.md`) that every sub-agent reads before acting and a curator keeps current, lean and conflict-free.
 - **Simulator:** LLM friend personas with hidden ground truth (availability, interests, budget, annoyance threshold) so we can measure plan quality, annoyance and tokens per call.
 
 Inference runs on Crusoe Managed Inference; event and destination search uses You.com.
@@ -17,4 +17,12 @@ Inference runs on Crusoe Managed Inference; event and destination search uses Yo
 
 ## Running
 
-_TBD: fill in once `sim/run.py` works end to end._
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # add Crusoe + You.com keys; leave empty to run offline with FAKE_LLM
+python -m social_glue.bot   # scripted 5-message chat through listener -> curator -> governor -> planner
+
+python -m social_glue.sim.run --group train_1          # simulated 2-week group chat, brain/ updates live
+python -m social_glue.sim.run --group heldout_1 --no-brain
+python -m social_glue.evolve --all --rounds 3          # per group: reflect, keep playbook edits that help, v0 vs vN on unseen runs -> results/
+```
