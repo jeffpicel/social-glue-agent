@@ -1,0 +1,27 @@
+display_information:
+  name: Claude
+  description: Claude Code for the social-glue repo
+features:
+  bot_user:
+    display_name: claude
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - chat:write
+      - chat:write.customize
+      - channels:history
+      - im:history
+      - im:read
+      - im:write
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.im
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
