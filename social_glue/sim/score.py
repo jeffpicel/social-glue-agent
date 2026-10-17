@@ -9,7 +9,7 @@ For each activity and each 7-day window:
       Each FN carries a reason from the bot's own timer log for that window:
       unexplored (belief low, never probed), misread (belief low despite probing),
       nudge_budget / waiting_for_quiet / no_availability (wanted to propose but was blocked),
-      not_due (belief high but cadence said not yet)
+      not_due (belief high but no candidate cleared the bar), recent_meetup (recency penalty kept it quiet)
 - TN: we didn't offer it and they didn't want it
 Probes are exploration (how FNs get found); they count only as messages.
 score = (w * (TP - FN) + (1 - w) * (TN - FP)) / decisions
