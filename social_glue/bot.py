@@ -109,9 +109,10 @@ class Bot:
 
     @staticmethod
     def _availability_ask(best: dict) -> str:
+        out = f" Include this link: {best['url']}." if best.get("url") else ""
         if best["activity"] == "event" and best.get("known", 0) < 2:
-            return " We don't know who's free then, so ask who can make that time."
-        return ""
+            out += " We don't know who's free then, so ask who can make that time."
+        return out
 
     def _say(self, text: str, ts: str, kind: str, activity: str | None, prompted: bool) -> str:
         self.history.append({"ts": ts, "kind": kind, "activity": activity, "prompted": prompted, "text": text})
