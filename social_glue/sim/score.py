@@ -1,4 +1,4 @@
-"""score(episode): accuracy of a confusion matrix over (activity, week) decisions, with a light message penalty.
+"""score(episode): value-weighted accuracy of a confusion matrix over (activity, week) decisions.
 
 For each activity and each 7-day window:
 - TP: we proposed it, the group took it, and it was rated at or above the success cutoff (default 7/10)
@@ -12,15 +12,15 @@ For each activity and each 7-day window:
       not_due (belief high but cadence said not yet)
 - TN: we didn't offer it and they didn't want it
 Probes are exploration (how FNs get found); they count only as messages.
-score = (tp*TP + tn*TN - fp*FP - fn*FN) / decisions - msg * bot messages
-using this group's TRUE values (hidden in the group JSON, defaults in agents/values.py). The bot only ever sees its
-own estimates of them in brain/values.md.
+score = (w * (TP - FN) + (1 - w) * (TN - FP)) / decisions
+using this group's TRUE w (hidden in the group JSON, defaults in agents/values.py). The bot only ever sees its
+own estimate of it in brain/values.md.
 """
 from collections import Counter
 from datetime import datetime
 
 from social_glue.agents.interests import DEFAULT_CADENCE
-from social_glue.agents.values import DEFAULT as DEFAULT_VALUES
+from social_glue.agents.values import normalize
 
 
 def fn_reason(activity: str, window_days: range, decisions: list[dict], probes: list[dict], day_of) -> str:
@@ -82,10 +82,10 @@ def score(episode: dict) -> dict:
     total = tp + fp + fn + tn
     accuracy = (tp + tn) / total if total else 1.0
     messages = len(episode["bot_messages"])
-    v = {**DEFAULT_VALUES, **g.get("values", {})}
+    w = normalize(g.get("values", {}))["w"]
     usage = episode["usage"]
     return {
-        "score": round((v["tp"] * tp + v["tn"] * tn - v["fp"] * fp - v["fn"] * fn) / max(total, 1) - v["msg"] * messages, 3),
+        "score": round((w * (tp - fn) + (1 - w) * (tn - fp)) / max(total, 1), 3),
         "accuracy": round(accuracy, 3), "f1": round(f1, 3),
         "precision": round(precision, 3), "recall": round(recall, 3),
         "tp": tp, "fp": fp, "fn": fn, "tn": tn, "fp_reasons": dict(fp_reasons), "fn_reasons": dict(fn_reasons),

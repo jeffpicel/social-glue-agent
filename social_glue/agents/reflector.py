@@ -11,8 +11,8 @@ You get the current playbook, a transcript, and its score: a confusion matrix ov
 - FN = the group wanted an activity and we never offered it; fn_reasons says why (unexplored = never probed a low
   belief, misread = probed but belief stayed low, nudge_budget / waiting_for_quiet / no_availability = wanted to
   propose but a gate blocked it, not_due = cadence too long).
-- score = value of the outcomes per decision (tp/tn earn, fp/fn cost, using this group's values) minus a light
-  per-message cost. You can't change the values; change how the bot behaves.
+- score = value of the outcomes per decision: w * (TP - FN) + (1 - w) * (TN - FP), where w is how much this group
+  values meeting up versus not being messaged. You can't change w; change how the bot behaves.
 Change the knobs and style lines to raise the score. Keep every "- key: number" knob line (code parses them)
 and the markdown format. Return only the new playbook."""
 
