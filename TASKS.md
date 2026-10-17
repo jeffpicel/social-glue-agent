@@ -8,7 +8,7 @@ Deadline: submit by **4:45 PM PT** (hard cutoff 5:00).
 
 Thomas is on the Slack bot for team coordination, so the simulator has no owner. Jeff (plus coding agents) now owns the **whole harness**, and the simulator shrinks to the thinnest version that still produces a before/after number. If Thomas frees up, he picks up anything under `sim/` marked `todo`.
 
-**Vision in one breath:** a bot sits in a friend group chat. Every message goes through one pipeline (listen, curate, decide whether to speak, plan). The only memory is the brain folder, never the raw transcript. A playbook file controls how pushy it is, and one reflect step rewrites that playbook from a scored episode.
+**Vision in one breath:** a bot sits in a friend group chat. Every message goes through one pipeline (listen, curate, decide whether to speak, plan). Its memory is the brain folder (per-friend files, group, playbook, plus any other files that help, e.g. past proposals) and the last few messages, rather than the whole transcript, so prompts stay small as the chat grows. A playbook file controls how pushy it is, and one reflect step rewrites that playbook from a scored episode.
 
 ## Harness structure
 
