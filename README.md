@@ -12,7 +12,8 @@ Inference runs on Crusoe Managed Inference; event and destination search uses Yo
 
 ## Coordinating
 
-- [PLAN.md](PLAN.md): the build plan, architecture and demo script.
+- [DESIGN.md](DESIGN.md): design vision, goals and decisions (start here).
+- [PLAN.md](PLAN.md): the original morning build plan and demo script.
 - [TASKS.md](TASKS.md): who's doing what. Humans and coding agents read it before starting and update it when done.
 
 ## Running
