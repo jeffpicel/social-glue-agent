@@ -2,11 +2,14 @@
 - Bot.on_message(msg): listener -> curator -> tracker (reads replies to proposals/probes) -> governor -> planner
 - Bot.on_tick(now):    tracker (silence = weak no) -> governor.decide_idle (what's due: propose / probe) -> planner
 """
+import re
 from datetime import datetime
 
 from social_glue.agents import curator, estimator, governor, interests, listener, planner, tracker, values
 from social_glue.tools import search_events
 from social_glue.brain import Brain
+
+PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
 
 
 class Bot:
@@ -37,8 +40,18 @@ class Bot:
             return None
         reason, activity = decision
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
-        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, activity=activity)
-        return self._say(text, msg["ts"], reason, activity, prompted=reason == "addressed")
+        note = ""
+        if reason == "addressed" and PLAN_ASK.search(msg["text"]):
+            # A direct ask to plan skips the timer and its gates: propose the best option now, whatever the bar.
+            sliders = interests.load(self.brain)
+            activity = interests.detect(msg["text"]) or max(sliders, key=lambda a: sliders[a]["level"])
+            best = self._best_candidate(activity, bar=0.0)
+            if best:
+                reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}."
+                interests.mark(self.brain, activity, "last_proposed", msg["ts"])
+                self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
+        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
+        return self._say(text, msg["ts"], reason, activity, prompted=reason in ("addressed", "propose"))
 
     def on_tick(self, now: str) -> str | None:
         """Called on a clock (e.g. hourly in Discord, nightly in the sim). The bot's only way to start things."""
@@ -69,14 +82,14 @@ class Bot:
             self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
         return text
 
-    def _best_candidate(self, activity: str) -> dict | None:
+    def _best_candidate(self, activity: str, bar: float | None = None) -> dict | None:
         """Estimate every candidate for this activity; return the best if its chance of success clears the bar."""
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
             events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
         ranked = estimator.estimate(self.brain, estimator.candidates(self.brain, activity, events))
-        bar = values.threshold(values.load(self.brain))
+        bar = values.threshold(values.load(self.brain)) if bar is None else bar
         return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
 
     def _say(self, text: str, ts: str, kind: str, activity: str | None, prompted: bool) -> str:

@@ -25,9 +25,20 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
         try:
             import requests
 
-            r = requests.get("https://api.ydc-index.io/search", params={"query": query}, headers={"X-API-Key": key}, timeout=10)
-            r.raise_for_status()
-            hits = r.json().get("hits", [])[:5]
+            hits, err = [], None
+            # Newer keys only work on ydc-index.io/v1 (results.web); older ones on api.ydc-index.io (hits).
+            for url in ("https://ydc-index.io/v1/search", "https://api.ydc-index.io/search"):
+                try:
+                    r = requests.get(url, params={"query": query}, headers={"X-API-Key": key}, timeout=10)
+                    r.raise_for_status()
+                    body = r.json()
+                    hits = (body.get("results") or {}).get("web") or body.get("hits") or []
+                    hits = hits[:5]
+                    break
+                except Exception as e:  # noqa: BLE001
+                    err = e
+            if not hits and err:
+                raise err
             results = [{"title": h.get("title", ""), "url": h.get("url", ""), "snippet": (h.get("snippets") or [h.get("description", "")])[0]} for h in hits] or FALLBACK
         except Exception as e:  # noqa: BLE001 - demo must not crash on search
             print(f"[you.com] falling back to canned events: {e}")
