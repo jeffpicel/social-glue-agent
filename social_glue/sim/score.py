@@ -1,9 +1,10 @@
 """score(episode): accuracy of a confusion matrix over (activity, week) decisions, with a light message penalty.
 
 For each activity and each 7-day window:
-- TP: we proposed it and the group took it (confirmed)
-- FP: we proposed it and it wasn't taken. Each FP carries a reason from the replies:
-      activity (wrong kind of hangout), timing (wrong day / too soon), specifics (wrong event/place/price)
+- TP: we proposed it, the group took it, and it was rated at or above the success cutoff (default 7/10)
+- FP: we proposed it and it wasn't a success. Each FP carries a reason:
+      activity (wrong kind of hangout), timing (wrong day / too soon), specifics (wrong event/place/price),
+      ignored (nobody answered), low_rating (it happened but was rated below the cutoff)
 - FN: the group wanted it (hidden appetite >= 0.5), it wasn't done recently enough, and we didn't offer it.
       Each FN carries a reason from the bot's own timer log for that window:
       unexplored (belief low, never probed), misread (belief low despite probing),
@@ -49,12 +50,21 @@ def score(episode: dict) -> dict:
     proposals = [b for b in episode["bot_messages"] if b["kind"] == "propose" and b.get("activity")]
     probes = [b for b in episode["bot_messages"] if b["kind"] == "probe"]
 
-    tp = sum(1 for b in proposals if b.get("confirmed"))
-    fp_reasons = Counter(Counter(b.get("reasons") or ["ignored"]).most_common(1)[0][0] for b in proposals if not b.get("confirmed"))
+    cut = g.get("success_cutoff", 7)
+    rating = lambda b: sum(b["ratings"].values()) / len(b["ratings"]) if b.get("ratings") else None  # noqa: E731
+    success = lambda b: bool(b.get("confirmed")) and (rating(b) or 0) >= cut  # noqa: E731
+    tp = sum(1 for b in proposals if success(b))
+    fp_reasons = Counter(
+        "low_rating" if b.get("confirmed") else Counter(b.get("reasons") or ["ignored"]).most_common(1)[0][0]
+        for b in proposals if not success(b))
+    # Calibration: how good were the bot's own estimates? (Brier score on success; lower is better)
+    est = [(b["estimate"]["p_success"], 1.0 if success(b) else 0.0) for b in proposals if b.get("estimate")]
+    brier = round(sum((p - y) ** 2 for p, y in est) / len(est), 3) if est else None
+    rated = [rating(b) for b in proposals if rating(b) is not None]
     fp = sum(fp_reasons.values())
     fn = tn = 0
     fn_reasons = Counter()
-    done_days = {a: [day_of(m["ts"]) for m in episode["meetups"] if m["activity"] == a] for a in g["appetite"]}
+    done_days = {a: [day_of(b["ts"]) for b in proposals if b["activity"] == a and success(b)] for a in g["appetite"]}
     for a in g["appetite"]:
         for w0 in range(0, days, WINDOW):
             w = range(w0, min(w0 + WINDOW, days))
@@ -80,5 +90,6 @@ def score(episode: dict) -> dict:
         "precision": round(precision, 3), "recall": round(recall, 3),
         "tp": tp, "fp": fp, "fn": fn, "tn": tn, "fp_reasons": dict(fp_reasons), "fn_reasons": dict(fn_reasons),
         "probes": len(probes), "messages": messages,
+        "avg_rating": round(sum(rated) / len(rated), 1) if rated else None, "brier": brier,
         "cost": round(usage["prompt_tokens"] / max(usage["calls"], 1), 1),
     }

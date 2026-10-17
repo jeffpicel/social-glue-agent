@@ -91,3 +91,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 15:05 Claude: interest sliders (explore/exploit), decline reasons, confusion-matrix score with FP/FN reasons, per-group N+1 loop. Offline: vN cuts annoyance a lot but recall stays low; real numbers need Crusoe.
 - 15:08 Claude: dropped annoyance; score is accuracy minus a light per-message penalty.
 - 15:15 Claude: score is value-weighted (tp/tn/fp/fn/msg free per group, learned from chat); propose threshold derived from those values.
+- 15:55 Claude: per-candidate estimates (p_accept, 0–10 satisfaction), success = rated >= 7, propose only if p_success clears the value threshold; ratings in sim; Brier calibration in score. See DESIGN.md 5b.

@@ -53,8 +53,8 @@ Silence for a day counts as a weak no.
 
 For each activity and each week:
 
-- **TP:** we proposed it and the group took it.
-- **FP:** we proposed it and it wasn't taken. Reason: activity, timing, specifics or ignored.
+- **TP:** we proposed it, the group took it, and it was rated at or above the cutoff.
+- **FP:** we proposed it and it wasn't a success. Reason: activity, timing, specifics, ignored, or low_rating.
 - **FN:** the group wanted it, it hadn't happened recently, and we never offered it. The reason comes from the bot's own decision log: unexplored, misread, nudge_budget, waiting_for_quiet, no_availability, or not_due.
 - **TN:** we didn't offer it and they didn't want it.
 
@@ -69,6 +69,14 @@ For each activity and each week:
 - For now the reflector edits only the playbook, not the estimates, so the N+1 loop can't raise its score by changing what it's judged on. How this fits with learning the estimates is part of the open question.
 - The values also drive decisions. The bot proposes when its interest estimate exceeds `(fp + tn) / (tp + fn + fp + tn)`, the point where proposing has the higher expected value. A group that values hangouts more gets a bolder bot.
 - **Rejected along the way:** an "annoyance" term (too loaded), plain accuracy (rewards silence, since most cells are TNs), and balanced accuracy (locks in fixed 50/50 weights).
+
+### 5b. Every candidate gets an estimate; success means a good hangout
+
+- For each thing it could propose (each call slot, each event found, each trip idea), the bot estimates **p_accept** (the chance enough people say yes) and **satisfaction** (the expected 0–10 rating from those who go). See `agents/estimator.py`: the model makes these estimates, with a heuristic fallback offline.
+- **Success is not just a yes:** it's a hangout that happens *and* is rated at or above the cutoff (`success_cutoff: 7`, matching the 7/10 or 4/5 stars we'll ask real users for). So `p_success = p_accept × P(rating ≥ cutoff)`.
+- **Decision:** take the best candidate and propose it only if `p_success` clears the threshold implied by the current value estimates. Otherwise probe instead of pushing.
+- **Feedback:** after a hangout, attendees rate it 0–10. The rating moves the interest slider, and a hangout rated below the cutoff counts as an FP with reason `low_rating`.
+- Each proposal stores its estimate, so the score reports **calibration** (Brier score on predicted vs. actual success) next to the outcomes.
 
 ### 6. Pacing
 

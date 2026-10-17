@@ -4,7 +4,8 @@
 """
 from datetime import datetime
 
-from social_glue.agents import curator, governor, interests, listener, planner, tracker, values
+from social_glue.agents import curator, estimator, governor, interests, listener, planner, tracker, values
+from social_glue.tools import search_events
 from social_glue.brain import Brain
 
 
@@ -29,6 +30,7 @@ class Bot:
             self.brain.write(msg["name"], {})  # every member gets a brain file, even before we know anything
         self.last_notes = curator.curate(self.brain, listener.listen(msg))
         self.last_notes += tracker.on_reply(self.brain, msg, self.history)
+        self.last_notes += tracker.on_rating(self.brain, msg, self.history)
         self.last_notes += values.learn(self.brain, msg["text"])
         decision = governor.decide(self.brain, msg, self.history, self.transcript)
         if decision is None:
@@ -51,10 +53,31 @@ class Bot:
         s = interests.load(self.brain)[activity]
         done = (s["last_done"] or "never")[:10]
         note = f"Chat quiet for {quiet} days. Last {activity} together: {done}. Keep it low-effort to say yes (or no) to."
+        best = None
+        if reason == "propose":
+            best = self._best_candidate(activity)
+            if best is None:
+                reason = "probe"  # nothing concrete looks good enough; ask instead of pushing
+            else:
+                note += f" Propose exactly this: {best['option']}."
+                self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
         if reason in ("propose", "probe"):
             interests.mark(self.brain, activity, "last_proposed" if reason == "propose" else "last_probe", now)
-        return self._say(text, now, reason, activity, prompted=False)
+        self._say(text, now, reason, activity, prompted=False)
+        if best:
+            self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
+        return text
+
+    def _best_candidate(self, activity: str) -> dict | None:
+        """Estimate every candidate for this activity; return the best if its chance of success clears the bar."""
+        events = []
+        if activity == "event":
+            tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
+            events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
+        ranked = estimator.estimate(self.brain, estimator.candidates(self.brain, activity, events))
+        bar = values.threshold(values.load(self.brain))
+        return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
 
     def _say(self, text: str, ts: str, kind: str, activity: str | None, prompted: bool) -> str:
         self.history.append({"ts": ts, "kind": kind, "activity": activity, "prompted": prompted, "text": text})
