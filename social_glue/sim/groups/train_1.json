@@ -29,7 +29,7 @@
         "live music"
       ],
       "budget": 30,
-      "annoyance_threshold": 2,
+      "annoyance_threshold": 1,
       "lines": [
         "I love board games and live music",
         "work is chaos this week lol"
@@ -63,7 +63,7 @@
         "food"
       ],
       "budget": 25,
-      "annoyance_threshold": 2,
+      "annoyance_threshold": 1,
       "lines": [
         "sup",
         "anyone watching the game tonight"

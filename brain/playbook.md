@@ -1,6 +1,6 @@
 # Playbook
 
-- max_unprompted_per_week: 6
+- max_ignored_nudges_per_week: 6
 - nudge_after_quiet_days: 3
 - overdue_nudge_after_quiet_days: 1
 - target_meetup_every_days: 14

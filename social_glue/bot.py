@@ -28,7 +28,7 @@ class Bot:
         if (met := tracker.update(self.brain, msg, self.history, self.accepted)):
             self.meetups += 1
             self.last_notes.append(met)
-        reason = governor.decide(self.brain, msg, self.history)
+        reason = governor.decide(self.brain, msg, self.history, self.transcript)
         if reason is None:
             return None
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
@@ -39,7 +39,7 @@ class Bot:
         """Called on a clock (e.g. every evening). Lets the bot restart a chat that has gone quiet."""
         self.last_notes = []
         last = self.transcript[-1]["ts"] if self.transcript else None
-        reason = governor.decide_idle(self.brain, now, last, self.history)
+        reason = governor.decide_idle(self.brain, now, last, self.history, self.transcript)
         if reason is None:
             return None
         quiet = (datetime.fromisoformat(now) - datetime.fromisoformat(last)).days if last else 0

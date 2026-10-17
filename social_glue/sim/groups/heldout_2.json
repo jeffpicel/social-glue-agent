@@ -12,7 +12,7 @@
         "coffee"
       ],
       "budget": 30,
-      "annoyance_threshold": 2,
+      "annoyance_threshold": 1,
       "lines": [
         "coffee this weekend anyone?",
         "I'm into jazz lately"
@@ -45,7 +45,7 @@
         "art"
       ],
       "budget": 25,
-      "annoyance_threshold": 2,
+      "annoyance_threshold": 1,
       "lines": [
         "lol",
         "broke until payday, $25 max for anything"

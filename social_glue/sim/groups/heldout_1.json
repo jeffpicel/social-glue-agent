@@ -12,7 +12,7 @@
         "food"
       ],
       "budget": 35,
-      "annoyance_threshold": 2,
+      "annoyance_threshold": 1,
       "lines": [
         "we should do something soon!!",
         "I'm obsessed with trivia nights"
@@ -45,7 +45,7 @@
         "movies"
       ],
       "budget": 30,
-      "annoyance_threshold": 2,
+      "annoyance_threshold": 1,
       "lines": [
         "who's seen the new dune",
         "I like trying new food spots"

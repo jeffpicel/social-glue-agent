@@ -20,11 +20,16 @@ class Persona:
         self.revealed_availability = any("free" in l.lower() for l in self.lines)
 
     def reaction(self, chat: list[dict]) -> str:
-        """Deterministic so scoring is stable: bot messages in the last 7 days vs. this person's threshold."""
+        """Deterministic so scoring is stable: out-of-the-blue bot messages in the last 7 days vs. this person's threshold."""
         if not chat:
             return "none"
         now = datetime.fromisoformat(chat[-1]["ts"])
-        bot_unprompted = sum(1 for m in chat if m["name"] == "Glue" and now - datetime.fromisoformat(m["ts"]) < timedelta(days=7))
+        # Replies to someone are fine in a busy week; out-of-the-blue bot messages are what wear people down.
+        bot_unprompted = sum(
+            1 for i, m in enumerate(chat)
+            if m["name"] == "Glue" and now - datetime.fromisoformat(m["ts"]) < timedelta(days=7)
+            and not (i and chat[i - 1]["name"] != "Glue" and datetime.fromisoformat(m["ts"]) - datetime.fromisoformat(chat[i - 1]["ts"]) < timedelta(hours=1))
+        )
         t = self.spec["annoyance_threshold"]
         return "muted" if bot_unprompted > t + 2 else "annoyed" if bot_unprompted > t else "none"
 

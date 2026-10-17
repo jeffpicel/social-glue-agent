@@ -4,8 +4,8 @@ An agent that lives in a friends' group chat, keeps a **shared brain** of everyo
 
 Built today at the Crusoe Recursive Agents Hackathon (Oct 17, 2026).
 
-- **Shared Brain:** living files (`brain/people/<name>.md`, `brain/group.md`) that every sub-agent reads before acting and a curator keeps current, lean and conflict-free.
-- **Version N+1:** a self-rewriting `brain/playbook.md` (nudge budget, ask vs. propose, tone). Edits are kept only if they improve the score on held-out simulated groups.
+- **Version N+1 (primary):** a self-rewriting `brain/playbook.md` (when to nudge, how long to wait after a meetup, ask vs. propose, tone). Edits are kept only if they improve the score on held-out simulated groups.
+- **Shared Brain (supporting):** living files (`brain/people/<name>.md`, `brain/group.md`) that every sub-agent reads before acting and a curator keeps current, lean and conflict-free.
 - **Simulator:** LLM friend personas with hidden ground truth (availability, interests, budget, annoyance threshold) so we can measure plan quality, annoyance and tokens per call.
 
 Inference runs on Crusoe Managed Inference; event and destination search uses You.com.
