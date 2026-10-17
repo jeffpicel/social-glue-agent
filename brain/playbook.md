@@ -9,6 +9,7 @@
 - probe_every_days: 7
 - learning_rate: 0.3
 - success_cutoff: 7
+- recency_penalty: 0.6
 - cadence_days_call: 7
 - cadence_days_event: 14
 - cadence_days_trip: 90

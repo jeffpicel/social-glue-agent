@@ -9,7 +9,7 @@ For each activity and each 7-day window:
       Each FN carries a reason from the bot's own timer log for that window:
       unexplored (belief low, never probed), misread (belief low despite probing),
       nudge_budget / waiting_for_quiet / no_availability (wanted to propose but was blocked),
-      not_due (belief high but cadence said not yet)
+      not_due (belief high but no candidate cleared the bar), recent_meetup (recency penalty kept it quiet)
 - TN: we didn't offer it and they didn't want it
 Probes are exploration (how FNs get found); they count only as messages.
 score = (w * (TP - FN) + (1 - w) * (TN - FP)) / decisions
@@ -20,6 +20,7 @@ from collections import Counter
 from datetime import datetime
 
 from social_glue.agents.interests import DEFAULT_CADENCE
+from social_glue.agents.tracker import PLANS
 from social_glue.agents.values import normalize
 
 
@@ -47,7 +48,7 @@ def score(episode: dict) -> dict:
     g, days = episode["group"], episode["days"]
     start = datetime.fromisoformat(episode["start"])
     day_of = lambda ts: (datetime.fromisoformat(ts) - start).days  # noqa: E731
-    proposals = [b for b in episode["bot_messages"] if b["kind"] == "propose" and b.get("activity")]
+    proposals = [b for b in episode["bot_messages"] if b["kind"] in PLANS and b.get("activity")]
     probes = [b for b in episode["bot_messages"] if b["kind"] == "probe"]
 
     cut = g.get("success_cutoff", 7)

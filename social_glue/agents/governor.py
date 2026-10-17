@@ -1,16 +1,42 @@
-"""Governor: decides whether the bot speaks, and about what. Deterministic so it's cheap and testable.
+"""Governor: makes a reply-or-silence decision for every human message, plus timer nudges.
 
-- Chat path (decide): answer when addressed; otherwise only fill gaps (ask for availability).
+- Chat path (decide): use the model to decide whether this message merits a response.
 - Timer path (decide_idle): initiate. interests.choose() says what's due (propose a wanted activity,
   or probe a low one); the governor checks silence and the ignored-nudge budget.
 """
+import json
 import re
 from datetime import datetime, timedelta
 
+from social_glue import llm
 from social_glue.agents import interests
 from social_glue.brain import Brain
 
 BOT_NAMES = ("glue", "bot", "@glue")
+
+REPLY_SYSTEM = """You are the governor for Glue, a helpful friend-group chat bot.
+For EVERY incoming human message, decide if Glue should reply now. Most routine statements,
+banter, and facts being recorded should get no reply. Reply when someone asks Glue/a useful
+group question, addresses Glue, shares something that merits a brief empathetic/social response,
+or a short acknowledgement materially helps planning. Do not repeat information already handled.
+Never answer messages from Glue (they are excluded before this call).
+Return only JSON: {\"reply\": true|false, \"reason\": \"addressed|respond|ask\", \"activity\": \"call|event|trip|null\"}.
+Use addressed for direct mentions, respond for a conversational answer, and ask when the human is
+asking Glue for an activity idea or recommendation. In that case Glue should suggest something,
+not ask the human to provide suggestions. If silence is better, return {\"reply\": false}."""
+
+
+def _fake_reply_decision(msg: dict) -> str:
+    text = msg["text"].lower()
+    if any(n in text for n in BOT_NAMES):
+        return json.dumps({"reply": True, "reason": "addressed", "activity": None})
+    if re.search(r"\b(what should we do|any ideas|any suggestions|what do you recommend|where should we go|suggest something)\b", text):
+        return json.dumps({"reply": True, "reason": "ask", "activity": interests.detect(text)})
+    if "?" in text:
+        return json.dumps({"reply": True, "reason": "respond", "activity": None})
+    if re.search(r"\b(congrats|congratulations|sorry to hear|that sucks|thank you|thanks glue)\b", text):
+        return json.dumps({"reply": True, "reason": "respond", "activity": None})
+    return json.dumps({"reply": False})
 
 
 def budget(playbook: str) -> int:
@@ -57,21 +83,29 @@ def decide_idle(brain: Brain, now: str, last_activity: str | None, bot_history: 
     if len(ignored_nudges(bot_history, transcript, t)) >= budget(brain.playbook):
         entry["blocked"] = "nudge_budget"
         return None
-    if reason == "propose" and activity == "call" and len([p for p in brain.people() if "availability" in brain.facts(p)]) < 2:
-        entry["blocked"] = "no_availability"
-        return "ask", "call"  # can't pick a call time yet
+    # Even with incomplete availability, make a concrete low-commitment suggestion.
+    # The planner can use a reasonable default time and invite a yes/no or a constraint.
     return reason, activity
 
 
 def decide(brain: Brain, msg: dict, bot_history: list[dict], transcript: list[dict]) -> tuple[str, str | None] | None:
-    if any(n in msg["text"].lower() for n in BOT_NAMES):
-        return "addressed", None
     now = datetime.fromisoformat(msg["ts"])
-    if len(ignored_nudges(bot_history, transcript, now)) >= budget(brain.playbook):
+    context = brain.render()
+    recent = transcript[-6:]
+    user = (f"BRAIN:\n{context}\n\nRECENT CHAT:\n" +
+            "\n".join(f"{m['name']}: {m['text']}" for m in recent) +
+            f"\n\nINCOMING MESSAGE from {msg['name']}:\n{msg['text']}")
+    out = llm.chat(REPLY_SYSTEM, user, tier="fast", json_mode=True,
+                   fake=lambda: _fake_reply_decision(msg))
+    if not isinstance(out, dict) or not out.get("reply"):
         return None
-    week = [b for b in bot_history if not b["prompted"] and datetime.fromisoformat(b["ts"]) > now - timedelta(days=7)]
-    people = brain.people()
-    missing = [p for p in people if "availability" not in brain.facts(p)]
-    if len(people) >= 2 and len(missing) * 2 > len(people) and not any(b["kind"] == "ask" for b in week):
-        return "ask", None
-    return None
+
+    reason = out.get("reason")
+    if reason not in ("addressed", "respond", "ask"):
+        reason = "respond"
+    # Addressed responses are always allowed; the nudge budget is for timer-initiated proposals.
+    # Every chat-path reply responds to a live message and is therefore marked prompted by Bot.
+    activity = out.get("activity")
+    if activity not in ("call", "event", "trip"):
+        activity = None
+    return reason, activity

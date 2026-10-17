@@ -39,6 +39,11 @@ class Bot:
         if decision is None:
             return None
         reason, activity = decision
+        if reason == "ask" and activity is None:
+            activity = interests.detect(msg["text"])
+            if activity is None:
+                sliders = interests.load(self.brain)
+                activity = max(sliders, key=lambda a: sliders[a]["level"])
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
         note = ""
         if reason == "addressed" and PLAN_ASK.search(msg["text"]):
@@ -51,7 +56,8 @@ class Bot:
                 interests.mark(self.brain, activity, "last_proposed", msg["ts"])
                 self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
-        return self._say(text, msg["ts"], reason, activity, prompted=reason in ("addressed", "propose"))
+        # A chat-path response is prompted by the incoming message, unlike a timer nudge.
+        return self._say(text, msg["ts"], reason, activity, prompted=True)
 
     def on_tick(self, now: str) -> str | None:
         """Called on a clock (e.g. hourly in Discord, nightly in the sim). The bot's only way to start things."""
@@ -68,22 +74,27 @@ class Bot:
         note = f"Chat quiet for {quiet} days. Last {activity} together: {done}. Keep it low-effort to say yes (or no) to."
         best = None
         if reason == "propose":
-            best = self._best_candidate(activity)
+            penalty = interests.recency_penalty(self.brain, activity, datetime.fromisoformat(now))
+            best = self._best_candidate(activity, penalty)
+            if best is None and penalty > 0:
+                self.decisions[-1]["blocked"] = "recent_meetup"  # nothing good enough to justify meeting again so soon
+                return None
             if best is None:
                 reason = "probe"  # nothing concrete looks good enough; ask instead of pushing
             else:
                 note += f" Propose exactly this: {best['option']}." + self._availability_ask(best)
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
         text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
-        if reason in ("propose", "probe"):
-            interests.mark(self.brain, activity, "last_proposed" if reason == "propose" else "last_probe", now)
+        if reason in ("propose", "probe", "ask"):
+            interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
         if best:
             self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
         return text
 
-    def _best_candidate(self, activity: str, bar: float | None = None) -> dict | None:
-        """Estimate every candidate for this activity; return the best if its chance of success clears the bar."""
+    def _best_candidate(self, activity: str, penalty: float = 0.0, bar: float | None = None) -> dict | None:
+        """Estimate every candidate for this activity; return the best if its chance of success clears the bar
+        (value threshold plus the recency penalty, unless an explicit bar is given)."""
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
@@ -93,7 +104,7 @@ class Bot:
         # keep ones we lack data for, and ask about the time when proposing them.
         cands = [c for c in cands if c["activity"] != "event" or c["free"] >= min(2, c["known"])]
         ranked = estimator.estimate(self.brain, cands)
-        bar = values.threshold(values.load(self.brain)) if bar is None else bar
+        bar = values.threshold(values.load(self.brain)) + penalty if bar is None else bar
         return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
 
     @staticmethod
