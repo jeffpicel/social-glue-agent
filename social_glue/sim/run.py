@@ -56,12 +56,26 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
     personas = [Persona(m, rng, appetite) for m in group["members"]]
     color = {p.name: COLORS[i % len(COLORS)] for i, p in enumerate(personas)}
     chat = []
+    rated = 0
     for day in range(days):
         for a, (when, level) in group.get("drift", {}).items():
             if day == when:
                 appetite[a] = level
                 if verbose:
                     note(f"[hidden] group appetite for {a}s is now {level}")
+        # The day after a hangout someone says how it went; groups that value hangouts more say so.
+        if len(bot.meetups) > rated:
+            rated = len(bot.meetups)
+            p = rng.choice(personas)
+            text = "that was so fun, we should do it more" if group.get("values", {}).get("tp", 1.0) >= 1.0 else "it was ok"
+            msg = {"name": p.name, "text": text, "ts": (start + timedelta(days=day, minutes=30)).isoformat()}
+            chat.append(msg)
+            if verbose:
+                show(p.name, text, color[p.name])
+            bot.on_message(msg)
+            if verbose:
+                for n in bot.last_notes:
+                    note(f"[brain] {n}")
         quiet = rng.random() < 0.4  # some days nobody talks; the bot's timer path has to notice
         for turn in range(0 if quiet else 2):
             p = rng.choice(personas)

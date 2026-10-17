@@ -10,7 +10,8 @@ You get the current playbook, a transcript, and its score: a confusion matrix ov
 - FN = the group wanted an activity and we never offered it; fn_reasons says why (unexplored = never probed a low
   belief, misread = probed but belief stayed low, nudge_budget / waiting_for_quiet / no_availability = wanted to
   propose but a gate blocked it, not_due = cadence too long).
-- score = accuracy over TP/FP/FN/TN minus a light penalty per bot message (bursts of planning are fine).
+- score = value of the outcomes per decision (tp/tn earn, fp/fn cost, using this group's values) minus a light
+  per-message cost. You can't change the values; change how the bot behaves.
 Change the knobs and style lines to raise the score. Keep every "- key: number" knob line (code parses them)
 and the markdown format. Return only the new playbook."""
 
@@ -32,7 +33,7 @@ def _fake(playbook: str, s: dict) -> str:
         playbook = _set(playbook, "max_ignored_nudges_per_week", lambda v: max(1, v // 2))
         playbook = _set(playbook, "repropose_after_days", lambda v: v + 2)
     if reasons.get("activity", 0) >= max(reasons.get("timing", 0), reasons.get("specifics", 0), 1):
-        playbook = _set(playbook, "probe_below", lambda v: min(0.6, v + 0.1))
+        playbook = _set(playbook, "learning_rate", lambda v: min(0.6, v + 0.1))
     fn = s.get("fn_reasons", {})
     if fn.get("unexplored", 0):
         playbook = _set(playbook, "probe_every_days", lambda v: max(2, v - 2))

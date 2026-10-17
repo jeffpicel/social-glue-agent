@@ -1,11 +1,11 @@
 # Playbook
 
 ## Knobs (code reads these; the reflector tunes them)
+(When to propose vs. probe comes from brain/values.md, which the reflector doesn't touch.)
 - max_ignored_nudges_per_week: 6
 - propose_after_quiet_days: 1
 - probe_after_quiet_days: 2
 - repropose_after_days: 2
-- probe_below: 0.35
 - probe_every_days: 7
 - learning_rate: 0.3
 - cadence_days_call: 7

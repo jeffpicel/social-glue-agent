@@ -4,7 +4,7 @@
 """
 from datetime import datetime
 
-from social_glue.agents import curator, governor, interests, listener, planner, tracker
+from social_glue.agents import curator, governor, interests, listener, planner, tracker, values
 from social_glue.brain import Brain
 
 
@@ -29,6 +29,7 @@ class Bot:
             self.brain.write(msg["name"], {})  # every member gets a brain file, even before we know anything
         self.last_notes = curator.curate(self.brain, listener.listen(msg))
         self.last_notes += tracker.on_reply(self.brain, msg, self.history)
+        self.last_notes += values.learn(self.brain, msg["text"])
         decision = governor.decide(self.brain, msg, self.history, self.transcript)
         if decision is None:
             return None

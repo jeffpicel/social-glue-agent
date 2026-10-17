@@ -11,13 +11,15 @@ For each activity and each 7-day window:
       not_due (belief high but cadence said not yet)
 - TN: we didn't offer it and they didn't want it
 Probes are exploration (how FNs get found); they count only as messages.
-score = accuracy - 0.005 * bot messages
-The message penalty is deliberately light: a burst of back-and-forth to plan a trip is fine.
+score = (tp*TP + tn*TN - fp*FP - fn*FN) / decisions - msg * bot messages
+using this group's TRUE values (hidden in the group JSON, defaults in agents/values.py). The bot only ever sees its
+own estimates of them in brain/values.md.
 """
 from collections import Counter
 from datetime import datetime
 
 from social_glue.agents.interests import DEFAULT_CADENCE
+from social_glue.agents.values import DEFAULT as DEFAULT_VALUES
 
 
 def fn_reason(activity: str, window_days: range, decisions: list[dict], probes: list[dict], day_of) -> str:
@@ -31,7 +33,6 @@ def fn_reason(activity: str, window_days: range, decisions: list[dict], probes: 
         return "misread" if probed else "unexplored"
     return "not_due"
 
-W_MSG = 0.005
 WINDOW = 7
 
 
@@ -71,9 +72,11 @@ def score(episode: dict) -> dict:
     total = tp + fp + fn + tn
     accuracy = (tp + tn) / total if total else 1.0
     messages = len(episode["bot_messages"])
+    v = {**DEFAULT_VALUES, **g.get("values", {})}
     usage = episode["usage"]
     return {
-        "score": round(accuracy - W_MSG * messages, 3), "accuracy": round(accuracy, 3), "f1": round(f1, 3),
+        "score": round((v["tp"] * tp + v["tn"] * tn - v["fp"] * fp - v["fn"] * fn) / max(total, 1) - v["msg"] * messages, 3),
+        "accuracy": round(accuracy, 3), "f1": round(f1, 3),
         "precision": round(precision, 3), "recall": round(recall, 3),
         "tp": tp, "fp": fp, "fn": fn, "tn": tn, "fp_reasons": dict(fp_reasons), "fn_reasons": dict(fn_reasons),
         "probes": len(probes), "messages": messages,
