@@ -90,6 +90,13 @@ For each activity and each week:
   - **Rejected for now:** size buckets, which just recreate the types.
   - **Problem found:** a big hangout doesn't buy a quiet stretch in the chat; groups often talk about a trip a lot after it happens. Whatever replaces the types has to tell "full on hangouts" apart from "quiet chat".
 
+### 5d. Times and availability (decided by Jeff, 4:35 PM)
+
+- Availability is weekly free windows at 15-minute resolution, mapped from chat (`free_times`, e.g. "Tuesdays 18:30-21:30"); no calendar.
+- An event proposal has two separate checks: (1) estimated satisfaction gives a positive expected value under the group's parameters; (2) the event's time fits people's availability. Availability is taken as given for now.
+- When we lack availability for that day, finding a good event first and then asking who can make it is fine, even preferred.
+- Next step (not built): let an unusually good event outweigh soft availability, e.g. estimate how likely each person is to move a soft commitment for it, and fold that into p_accept.
+
 ### 6. Pacing
 
 - Only **ignored** nudges count against the weekly budget (`max_ignored_nudges_per_week`), so a busy planning week where people engage is never capped.
