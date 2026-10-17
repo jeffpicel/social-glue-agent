@@ -7,7 +7,7 @@ from datetime import datetime
 
 from social_glue.agents import curator, estimator, governor, interests, listener, planner, tracker, values
 from social_glue.tools import search_events
-from social_glue.brain import Brain
+from social_glue.brain import Brain, as_text
 
 PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
 
@@ -97,7 +97,7 @@ class Bot:
         (value threshold plus the recency penalty, unless an explicit bar is given)."""
         events = []
         if activity == "event":
-            tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
+            tastes = ", ".join(as_text(self.brain.facts(p)["interests"]["value"]) for p in self.brain.people() if "interests" in self.brain.facts(p))
             events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
         cands = estimator.candidates(self.brain, activity, events)
         # Step 2 for events: availability is a given. Drop events we know too few people can make;

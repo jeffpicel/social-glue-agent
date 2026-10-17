@@ -1,7 +1,7 @@
 """Planner: writes the bot's message from the brain (plus the last few messages), not the full transcript."""
 from social_glue import llm
 from social_glue.agents import interests
-from social_glue.brain import Brain
+from social_glue.brain import Brain, as_text
 from social_glue.tools import search_events
 
 SYSTEM = """You are Glue, a friendly bot in a friends' group chat that helps them actually hang out.
@@ -79,7 +79,7 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
 def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, note: str = "", activity: str | None = None) -> str:
     events = []
     if reason in ("propose", "ask") and activity == "event":
-        tastes = ", ".join(brain.facts(p)["interests"]["value"] for p in brain.people() if "interests" in brain.facts(p))
+        tastes = ", ".join(as_text(brain.facts(p)["interests"]["value"]) for p in brain.people() if "interests" in brain.facts(p))
         events = search_events(brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")[:3]
     sliders = interests.load(brain)
     context = brain.render() if use_brain else "\n".join(f"{m['name']}: {m['text']}" for m in recent)
