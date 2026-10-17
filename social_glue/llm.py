@@ -24,12 +24,15 @@ def _get_client():
     if _client is None:
         from openai import OpenAI
 
-        _client = OpenAI(api_key=os.environ["CRUSOE_API_KEY"], base_url=os.environ["CRUSOE_BASE_URL"])
+        base_url = os.getenv("CRUSOE_BASE_URL") or "https://api.inference.crusoecloud.com/v1"
+        _client = OpenAI(api_key=os.environ["CRUSOE_API_KEY"], base_url=base_url)
     return _client
 
 
 def _model(tier: str) -> str:
-    return os.environ["CRUSOE_MODEL_STRONG" if tier == "strong" else "CRUSOE_MODEL_FAST"]
+    if tier == "strong":
+        return os.getenv("CRUSOE_MODEL_STRONG") or "deepseek-ai/DeepSeek-V4-Pro"
+    return os.getenv("CRUSOE_MODEL_FAST") or "deepseek-ai/DeepSeek-V4-Flash"
 
 
 def chat(system: str, user: str, tier: str = "strong", json_mode: bool = False, fake=None):
@@ -46,16 +49,21 @@ def chat(system: str, user: str, tier: str = "strong", json_mode: bool = False, 
     kwargs = {}
     if json_mode:
         kwargs["response_format"] = {"type": "json_object"}
-    resp = _get_client().chat.completions.create(
-        model=_model(tier),
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0.4,
-        **kwargs,
-    )
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    try:
+        resp = _get_client().chat.completions.create(model=_model(tier), messages=messages, temperature=0.4, **kwargs)
+    except Exception:  # noqa: BLE001 - some models reject response_format; retry once without it
+        if not kwargs:
+            raise
+        resp = _get_client().chat.completions.create(model=_model(tier), messages=messages, temperature=0.4)
     if resp.usage:
         USAGE["prompt_tokens"] += resp.usage.prompt_tokens
     text = resp.choices[0].message.content or ""
     if not json_mode:
         return text.strip()
     text = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```")
-    return json.loads(text)
+    start, end = text.find("{"), text.rfind("}")
+    try:
+        return json.loads(text[start : end + 1] if start >= 0 else text)
+    except json.JSONDecodeError:
+        return {}

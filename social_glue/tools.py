@@ -20,7 +20,7 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
     if path.exists():
         return json.loads(path.read_text())
     results = FALLBACK
-    key = os.getenv("YDC_API_KEY")
+    key = os.getenv("YOU_API_KEY") or os.getenv("YDC_API_KEY")
     if key:
         try:
             import requests
