@@ -6,7 +6,8 @@ from social_glue import llm
 SYSTEM = """You tune the policy of Glue, a bot in a friends' group chat that proposes calls, events and trips.
 You get the current playbook, a transcript, and its score: a confusion matrix over (activity, week) decisions.
 - FP = proposed and declined; fp_reasons says why (activity = wrong kind of hangout, timing = wrong day/too soon,
-  specifics = wrong event/place/price, ignored = nobody answered).
+  specifics = wrong event/place/price, ignored = nobody answered, low_rating = happened but rated below the cutoff).
+- brier = how well the bot's own success estimates matched reality (lower is better).
 - FN = the group wanted an activity and we never offered it; fn_reasons says why (unexplored = never probed a low
   belief, misread = probed but belief stayed low, nudge_budget / waiting_for_quiet / no_availability = wanted to
   propose but a gate blocked it, not_due = cadence too long).

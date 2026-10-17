@@ -63,19 +63,22 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
                 appetite[a] = level
                 if verbose:
                     note(f"[hidden] group appetite for {a}s is now {level}")
-        # The day after a hangout someone says how it went; groups that value hangouts more say so.
+        # The day after a hangout, everyone who went rates it 0-10 (hidden: appetite + taste fit + noise).
         if len(bot.meetups) > rated:
             rated = len(bot.meetups)
-            p = rng.choice(personas)
-            text = "that was so fun, we should do it more" if group.get("values", {}).get("tp", 1.0) >= 1.0 else "it was ok"
-            msg = {"name": p.name, "text": text, "ts": (start + timedelta(days=day, minutes=30)).isoformat()}
-            chat.append(msg)
-            if verbose:
-                show(p.name, text, color[p.name])
-            bot.on_message(msg)
-            if verbose:
-                for n in bot.last_notes:
-                    note(f"[brain] {n}")
+            item = [b for b in bot.history if b.get("confirmed")][-1]
+            goers = [p for p in personas if item.get("voters", {}).get(p.name)]
+            for i, p in enumerate(goers):
+                r = p.rate(item["activity"], item["text"])
+                text = f"{r}/10, " + ("that was so fun" if r >= 8 else "it was ok" if r >= 5 else "meh, not really my thing")
+                msg = {"name": p.name, "text": text, "ts": (start + timedelta(days=day, minutes=10 + i)).isoformat()}
+                chat.append(msg)
+                if verbose:
+                    show(p.name, text, color[p.name])
+                bot.on_message(msg)
+                if verbose:
+                    for n in bot.last_notes:
+                        note(f"[brain] {n}")
         quiet = rng.random() < 0.4  # some days nobody talks; the bot's timer path has to notice
         for turn in range(0 if quiet else 2):
             p = rng.choice(personas)

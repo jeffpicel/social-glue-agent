@@ -32,6 +32,12 @@ class Persona:
     def wants(self, activity: str) -> float:
         return max(0.0, min(1.0, self.appetite[activity] + self.noise[activity]))
 
+    def rate(self, activity: str, text: str) -> int:
+        """Hidden satisfaction after going: how much they wanted this kind of hangout, plus taste fit."""
+        t = text.lower()
+        taste = 1.0 if any(i.split()[0] in t for i in self.spec["interests"]) else 0.4
+        return max(0, min(10, round(10 * (0.6 * self.wants(activity) + 0.4 * taste) + self.rng.uniform(-1.5, 1.5))))
+
     def _answer(self, activity: str, text: str) -> str:
         """Yes, or no with a reason: wrong activity, wrong timing, or wrong specifics."""
         t = text.lower()
