@@ -1,0 +1,49 @@
+{
+  "v0": {
+    "score": -0.595,
+    "accuracy": 0.159,
+    "tp": 0.0,
+    "fp": 1.0,
+    "fn": 4.333,
+    "tn": 1.0,
+    "precision": 0.333,
+    "recall": 0.0,
+    "messages": 7.0,
+    "probes": 4.0,
+    "avg_rating": 5.0,
+    "brier": 0.278,
+    "cost": 279.133,
+    "fp_reasons": {
+      "low_rating": 1,
+      "ignored": 2
+    },
+    "fn_reasons": {
+      "waiting_for_quiet": 6,
+      "not_due": 4,
+      "unexplored": 3
+    }
+  },
+  "vN": {
+    "score": -0.52,
+    "accuracy": 0.151,
+    "tp": 0.0,
+    "fp": 2.0,
+    "fn": 3.667,
+    "tn": 1.0,
+    "precision": 0.333,
+    "recall": 0.0,
+    "messages": 6.667,
+    "probes": 2.667,
+    "avg_rating": 6.0,
+    "brier": 0.247,
+    "cost": 291.0,
+    "fp_reasons": {
+      "ignored": 5,
+      "low_rating": 1
+    },
+    "fn_reasons": {
+      "not_due": 7,
+      "nudge_budget": 4
+    }
+  }
+}
