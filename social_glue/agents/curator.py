@@ -13,8 +13,10 @@ rewrite the old fact so the profile is consistent and keep the newer source_msg/
 Drop low-value or stale facts so there are at most 8 keys. Keep values short."""
 
 
-def _split(v: str) -> list[str]:
-    return [x.strip() for x in v.split(",") if x.strip()]
+def _split(v) -> list[str]:
+    # real models sometimes return interests as a JSON list instead of a comma string
+    items = v if isinstance(v, list) else str(v).split(",")
+    return [str(x).strip() for x in items if str(x).strip()]
 
 
 def _merge_rules(facts: dict, patches: list[dict], notes: list[str]) -> dict:

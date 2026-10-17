@@ -54,7 +54,7 @@ def _get_client():
 def _model(tier: str) -> str:
     if tier == "strong":
         return os.getenv("CRUSOE_MODEL_STRONG") or "deepseek-ai/DeepSeek-V4-Pro"
-    return os.getenv("CRUSOE_MODEL_FAST") or "deepseek-ai/DeepSeek-V4-Flash"
+    return os.getenv("CRUSOE_MODEL_FAST") or "deepseek-ai/Deepseek-V4-Flash"
 
 
 def chat(system: str, user: str, tier: str = "strong", json_mode: bool = False, fake=None):
