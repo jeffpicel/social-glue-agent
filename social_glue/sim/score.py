@@ -18,4 +18,5 @@ def score(episode: dict) -> dict:
     usage = episode["usage"]
     cost = round(usage["prompt_tokens"] / max(usage["calls"], 1), 1)
     return {"plan_quality": plan_quality, "annoyance": annoyance, "cost": cost,
-            "score": round(plan_quality - LAMBDA * annoyance, 3), "bot_messages": len(episode["bot_messages"])}
+            "score": round(plan_quality - LAMBDA * annoyance, 3), "bot_messages": len(episode["bot_messages"]),
+            "meetups": episode.get("meetups", 0)}

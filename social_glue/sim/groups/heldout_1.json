@@ -68,5 +68,6 @@
       ]
     }
   ],
-  "id": "heldout_1"
+  "id": "heldout_1",
+  "days_since_last_meetup": 30
 }

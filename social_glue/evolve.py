@@ -42,8 +42,8 @@ def main(rounds: int, seed: int):
     out.mkdir(exist_ok=True)
     (out / "playbook_vN.md").write_text(playbook)
     (out / "heldout.json").write_text(json.dumps(rows, indent=2))
-    lines = ["| setup (held-out groups) | plan_quality | annoyance | tokens/call | score |", "|---|---|---|---|---|"]
-    lines += [f"| {k} | {v['plan_quality']} | {v['annoyance']} | {v['cost']} | {v['score']} |" for k, v in rows.items()]
+    lines = ["| setup (held-out groups) | plan_quality | meetups | annoyance | tokens/call | score |", "|---|---|---|---|---|---|"]
+    lines += [f"| {k} | {v['plan_quality']} | {v['meetups']} | {v['annoyance']} | {v['cost']} | {v['score']} |" for k, v in rows.items()]
     table = "\n".join(lines)
     (out / "heldout.md").write_text(table + "\n")
     print("\n" + table)

@@ -70,5 +70,6 @@
       ]
     }
   ],
-  "id": "train_1"
+  "id": "train_1",
+  "days_since_last_meetup": 20
 }

@@ -37,7 +37,8 @@ brain/
 
 Two paths share the brain:
 - Message: persona message → listener → curator patches brain → governor decides → (if speaking) planner writes from brain.
-- Timer: `on_tick` each evening → governor checks quiet days + weekly budget → planner proposes (or asks if it can't propose yet).
+- Timer: `on_tick` each evening → governor weighs days since the last meetup (vs. `target_meetup_every_days`) first and chat silence second, within the weekly budget → planner proposes (or asks if it can't propose yet).
+- Meetups: `agents/tracker.py` marks a plan confirmed when a majority says yes and writes `last_meetup` to `group.md`.
 
 ## Interface contract (frozen; change only after telling the other person)
 
@@ -75,3 +76,4 @@ Append one line per finished task: `HH:MM name: what changed`.
 - 14:55 Claude: harness v0 pushed: `python -m social_glue.bot` runs the full pipeline offline (FAKE_LLM), incl. the Thursday conflict.
 - 15:10 Claude: sim, score, reflector and evolve run offline. Fake-mode numbers are placeholders; real before/after needs Crusoe.
 - 15:00 Claude: added `Bot.on_tick` timer path so the bot proposes after a quiet stretch (Jeff's call).
+- 15:15 Claude: timer now driven by time since last meetup; tracker records confirmed plans; annoyance is per-week. Offline evolve run keeps a playbook edit that cuts held-out annoyance 4.5 -> 0.

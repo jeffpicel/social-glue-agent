@@ -50,11 +50,15 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
     bot.brain.reset()
     if playbook:
         bot.brain.playbook = playbook
-    bot.brain.write("group", {"location": {"value": group["city"], "source_msg": "setup", "ts": "2026-10-01T00:00:00", "confidence": 1.0}})
+    start = datetime(2026, 10, 1, 18)
+    setup = lambda v: {"value": v, "source_msg": "setup", "ts": start.isoformat(), "confidence": 1.0}  # noqa: E731
+    gfacts = {"location": setup(group["city"])}
+    if "days_since_last_meetup" in group:
+        gfacts["last_meetup"] = setup((start - timedelta(days=group["days_since_last_meetup"])).isoformat())
+    bot.brain.write("group", gfacts)
     personas = [Persona(m, rng) for m in group["members"]]
     color = {p.name: COLORS[i % len(COLORS)] for i, p in enumerate(personas)}
     chat, reactions = [], []
-    start = datetime(2026, 10, 1, 18)
     for day in range(days):
         quiet = rng.random() < 0.4  # some days nobody talks; the bot's timer path has to notice
         for turn in range(0 if quiet else 2):
@@ -69,7 +73,7 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
             text = bot.on_message({k: msg[k] for k in ("name", "text", "ts")})
             if verbose:
                 for n in bot.last_notes:
-                    note(f"[curator] {n}")
+                    note(f"[brain] {n}")
             if text:
                 chat.append({"name": "Glue", "text": text, "ts": msg["ts"]})
                 if verbose:
@@ -81,7 +85,7 @@ def run_episode(group: dict, brain_dir: str | None = None, playbook: str | None 
             if verbose:
                 show("Glue", text + "  (after a quiet stretch)", "bold red")
     episode = {"group": group, "transcript": chat, "reactions": reactions, "bot_messages": bot.history,
-               "usage": dict(llm.USAGE), "playbook": bot.brain.playbook}
+               "usage": dict(llm.USAGE), "playbook": bot.brain.playbook, "meetups": bot.meetups}
     episode["score"] = score(episode)
     return episode
 

@@ -1,6 +1,7 @@
 """Simulated friends with hidden ground truth. They reveal facts slowly and get annoyed by an over-eager bot."""
 import json
 import random
+from datetime import datetime, timedelta
 
 from social_glue import llm
 
@@ -19,9 +20,11 @@ class Persona:
         self.revealed_availability = any("free" in l.lower() for l in self.lines)
 
     def reaction(self, chat: list[dict]) -> str:
-        """Deterministic so scoring is stable: annoyed past the threshold, muted well past it."""
-        recent = chat[-12:]
-        bot_unprompted = sum(1 for m in recent if m["name"] == "Glue")
+        """Deterministic so scoring is stable: bot messages in the last 7 days vs. this person's threshold."""
+        if not chat:
+            return "none"
+        now = datetime.fromisoformat(chat[-1]["ts"])
+        bot_unprompted = sum(1 for m in chat if m["name"] == "Glue" and now - datetime.fromisoformat(m["ts"]) < timedelta(days=7))
         t = self.spec["annoyance_threshold"]
         return "muted" if bot_unprompted > t + 2 else "annoyed" if bot_unprompted > t else "none"
 
