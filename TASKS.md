@@ -48,11 +48,11 @@ Turn loop: persona message → listener → curator patches brain → governor d
 
 | Time (PT) | Task | Owner | Status |
 |---|---|---|---|
-| 2:30–2:45 | Agree vision + structure (this file) | Jeff | doing (Jeff) |
-| 2:30–2:45 | Package skeleton, `llm.py` with Crusoe + FAKE_LLM fallback, `brain.py` | Jeff | todo |
+| 2:30–2:45 | Agree vision + structure (this file) | Jeff | done |
+| 2:30–2:45 | Package skeleton, `llm.py` with Crusoe + FAKE_LLM fallback, `brain.py` | Jeff | done |
 | 2:30–2:45 | Crusoe API key + model ids in `.env`; You.com key | Jeff | todo |
-| 2:45–3:30 | `listener.py`, `curator.py` (incl. one conflict case) | Jeff | todo |
-| 2:45–3:30 | `governor.py`, `planner.py` + cached `search_events` | Jeff | todo |
+| 2:45–3:30 | `listener.py`, `curator.py` (incl. one conflict case): v0 runs in fake mode; tune prompts on Crusoe | Jeff | doing (Jeff) |
+| 2:45–3:30 | `governor.py`, `planner.py` + cached `search_events`: v0 runs in fake mode; tune on Crusoe | Jeff | doing (Jeff) |
 | 3:30–4:00 | Thin sim: 3 group JSONs (1 train, 2 heldout), `personas.py`, `run.py` | Jeff / Thomas if free | todo |
 | 3:30–4:00 | `score.py` + `--no-brain` baseline | Jeff / Thomas if free | todo |
 | 4:00–4:15 | `reflector.py` + `evolve.py` (one round), save results table | Jeff | todo |
@@ -68,3 +68,4 @@ Turn loop: persona message → listener → curator patches brain → governor d
 Append one line per finished task: `HH:MM name: what changed`.
 
 - 14:35 Claude: re-scoped board after Thomas moved to the Slack bot; harness structure written down.
+- 14:55 Claude: harness v0 pushed: `python -m social_glue.bot` runs the full pipeline offline (FAKE_LLM), incl. the Thursday conflict.

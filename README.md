@@ -17,4 +17,10 @@ Inference runs on Crusoe Managed Inference; event and destination search uses Yo
 
 ## Running
 
-_TBD: fill in once `sim/run.py` works end to end._
+```bash
+pip install -r requirements.txt
+cp .env.example .env   # add Crusoe + You.com keys; leave empty to run offline with FAKE_LLM
+python -m social_glue.bot   # scripted 5-message chat through listener -> curator -> governor -> planner
+```
+
+`sim/run.py` (simulated friend groups and scores) is next; see TASKS.md.
