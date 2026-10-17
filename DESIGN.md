@@ -80,12 +80,15 @@ For each activity and each week:
 - **Feedback:** after a hangout, attendees rate it 0–10. The rating moves the interest slider, and a hangout rated below the cutoff counts as an FP with reason `low_rating`.
 - Each proposal stores its estimate, so the score reports **calibration** (Brier score on predicted vs. actual success) next to the outcomes.
 
-### 5c. One kind of proposal: calls, events and trips are all event proposals (target design)
+### 5c. Three hardcoded proposal types for now: call, event, trip
 
-- Calls, local events (from Partiful, Luma or other sources) and group trips are all the same object, a **proposal**: what, when, where, cost, size of the ask (hours, travel, lead time), and source. **Why:** separate artifacts and frameworks per type are bloat, and don't scale to new sources.
-- **Frequency comes from the estimate, not from types.** p_accept is conditioned on how long it has been since the group last did something of that size. A call a week after the last call scores well; a trip three months after the last trip scores low, and a year later scores high. Trips are rare because their p_success usually sits below `1 − w`, not because a rule says so.
-- The per-activity sliders and cadence knobs become learned preferences over proposal features. "call", "event" and "trip" survive only as tags, for readable logs and for the per-(tag, week) cells in the score.
-- **Status:** decided Oct 17, not yet built. The code still has separate sliders for call, event and trip; we kept it for the demo because GlueBot was live on Discord.
+- **Decision (Oct 17):** keep three fixed types, each with its own interest slider and cadence, as the code does today. **Why:** it's workable now; the unified design below raised questions we can't settle before the deadline.
+- All three still go through the same estimator (p_accept, satisfaction, p_success vs `1 − w`), so there's one decision rule, not three frameworks.
+- **Where we want to go (not decided):** every proposal is one shape (what, when, where, cost, size of the ask, source), whether it's a call, a Partiful or Luma event, or a trip, because separate types are bloat and don't scale to new sources. Two ideas for handling how often each kind comes up:
+  - **Hangout tank (when):** one pool of points that drains over time; a hangout refills it by size × rating; propose more as it gets low.
+  - **Satiation by similarity (what):** each past hangout lowers the appeal of similar proposals, fading over time, slower for bigger hangouts, so a trip holds back trips for long but barely affects calls. Start with a varied mix and learn it.
+  - **Rejected for now:** size buckets, which just recreate the types.
+  - **Problem found:** a big hangout doesn't buy a quiet stretch in the chat; groups often talk about a trip a lot after it happens. Whatever replaces the types has to tell "full on hangouts" apart from "quiet chat".
 
 ### 6. Pacing
 
