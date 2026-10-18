@@ -88,10 +88,10 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
             return
         for note in bot.last_notes:
             log.info("[brain %s] %s", channel_id, note)
-    if any(n.startswith("confirmed") for n in bot.last_notes):
-        await say(client.get_channel(channel_id), f"It's on! {', '.join(n for n in bot.last_notes if n.startswith('confirmed'))} 🎉")
-    elif reply:
+    if reply:  # includes the calendar invite when this tap confirmed the plan
         await say(client.get_channel(channel_id), reply)
+    elif any(n.startswith("confirmed") for n in bot.last_notes):
+        await say(client.get_channel(channel_id), f"It's on! {', '.join(n for n in bot.last_notes if n.startswith('confirmed'))} 🎉")
 
 
 @client.event

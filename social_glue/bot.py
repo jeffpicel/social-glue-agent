@@ -5,6 +5,7 @@
 import re
 from datetime import datetime
 
+from social_glue import calendar
 from social_glue.agents import curator, estimator, governor, interests, listener, planner, tracker, values
 from social_glue.tools import search_events
 from social_glue.brain import Brain
@@ -32,9 +33,17 @@ class Bot:
         if msg["name"].lower() not in self.brain.people():
             self.brain.write(msg["name"], {})  # every member gets a brain file, even before we know anything
         self.last_notes = curator.curate(self.brain, listener.listen(msg))
+        open_items = {id(b) for b in self.history if not b.get("confirmed")}
         self.last_notes += tracker.on_reply(self.brain, msg, self.history)
+        just_confirmed = [b for b in self.history if b.get("confirmed") and id(b) in open_items]
         self.last_notes += tracker.on_rating(self.brain, msg, self.history)
         self.last_notes += values.learn(self.brain, msg["text"])
+        if just_confirmed:  # a plan just got enough yeses: send the invite instead of more chat
+            plan = just_confirmed[-1]
+            going = [n for n, yes in plan.get("voters", {}).items() if yes]
+            text = calendar.invite({**plan.get("estimate", {}), "option": plan.get("estimate", {}).get("option", plan["text"])}, msg["ts"], going)
+            if text:
+                return self._say(f"It's on! {text}", msg["ts"], "invite", plan.get("activity"), prompted=True)
         decision = governor.decide(self.brain, msg, self.history, self.transcript)
         if decision is None:
             return None
@@ -57,7 +66,10 @@ class Bot:
                 self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
         text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.
-        return self._say(text, msg["ts"], reason, activity, prompted=True)
+        self._say(text, msg["ts"], reason, activity, prompted=True)
+        if best:
+            self.history[-1]["estimate"] = self._plan_details(best)
+        return text
 
     def on_tick(self, now: str) -> str | None:
         """Called on a clock (e.g. hourly in Discord, nightly in the sim). The bot's only way to start things."""
@@ -89,7 +101,7 @@ class Bot:
             interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
         if best:
-            self.history[-1]["estimate"] = {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success")}
+            self.history[-1]["estimate"] = self._plan_details(best)
         return text
 
     def _best_candidate(self, activity: str, penalty: float = 0.0, bar: float | None = None) -> dict | None:
@@ -106,6 +118,11 @@ class Bot:
         ranked = estimator.estimate(self.brain, cands)
         bar = values.threshold(values.load(self.brain)) + penalty if bar is None else bar
         return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
+
+    @staticmethod
+    def _plan_details(best: dict) -> dict:
+        """What we keep about a proposal: the estimate (for calibration) and when/where (for the invite)."""
+        return {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success", "day", "start", "minutes", "url") if k in best}
 
     @staticmethod
     def _with_link(text: str, activity: str | None, best: dict | None) -> str:
