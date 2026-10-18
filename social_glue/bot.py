@@ -11,7 +11,14 @@ from social_glue.agents import curator, estimator, governor, interests, listener
 from social_glue.tools import observe_chat_venues, observe_search_sources, search_events
 from social_glue.brain import Brain
 
-PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
+PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun|find|look ?up|search|check|google|partiful|luma|eventbrite|listings?|what'?s (on|happening)|recommend\w*|options|picks?)\b", re.I)
+WHEN = [(r"\btonight\b|\btoday\b", "today"), (r"\btomorrow\b", "tomorrow"), (r"\bweekend\b", "this weekend"), (r"\bthis week\b|\bsoon\b|\bfast\b", "this week")]
+# Words that say how to ask, not what to look for. What's left of an ask is the search topic ("art", "jazz").
+FILLER = set("""glue gluebot hey hi yo pls please can could would you u we us me our i find look up search check google partiful luma
+eventbrite listing listings get give show suggest propose recommend plan any anything some something cool fun good nice great
+fast quick quickly do it a an the to for of in on at this that these next week weekend tonight today tomorrow event events
+thing things go out with and or just again what whats happening on there sf city local nearby around options option picks pick
+few one two three""".split())
 
 
 class Bot:
@@ -80,12 +87,15 @@ class Bot:
             # A direct ask to plan skips the timer and its gates: propose the best option now, whatever the bar.
             sliders = interests.load(self.brain)
             activity = interests.detect(msg["text"]) or activity or max(sliders, key=lambda a: sliders[a]["level"])
-            best = self._best_candidate(activity, bar=0.0)
+            best = self._best_candidate(activity, bar=0.0, ask=msg["text"])
+            if best is None and activity == "event":
+                note = ("They asked for an event. Your live event search ran but found nothing that fits."
+                        " Say that plainly (never claim you can't search) and offer one concrete alternative or ask what to look for.")
             if best:
                 reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}." + self._availability_ask(best)
                 interests.mark(self.brain, activity, "last_proposed", msg["ts"])
                 self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
-        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best, reason)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.
         self._say(text, msg["ts"], reason, activity, prompted=True)
         if best:
@@ -117,7 +127,7 @@ class Bot:
             else:
                 note += f" Propose exactly this: {best['option']}." + self._availability_ask(best)
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
-        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best, reason)
         if reason in ("propose", "probe", "ask"):
             interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
@@ -125,15 +135,24 @@ class Bot:
             self.history[-1]["estimate"] = self._plan_details(best)
         return text
 
-    def _best_candidate(self, activity: str, penalty: float = 0.0, bar: float | None = None) -> dict | None:
+    @staticmethod
+    def _topic(text: str) -> tuple[str | None, str]:
+        """What to search for and when, from a direct ask: "find a cool art event this week" -> ("art", "this week")."""
+        t = re.sub(r"<@!?\d+>|https?://\S+", " ", text.lower())
+        when = next((w for pat, w in WHEN if re.search(pat, t)), "this month")
+        words = [w for w in re.findall(r"[a-z][a-z'-]+", t) if w.replace("'", "") not in FILLER]
+        return (" ".join(words) or None), when
+
+    def _best_candidate(self, activity: str, penalty: float = 0.0, bar: float | None = None, ask: str = "") -> dict | None:
         """Estimate every candidate for this activity; return the best if its chance of success clears the bar
         (value threshold plus the recency penalty, unless an explicit bar is given)."""
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
+            topic, when = self._topic(ask)
             events = search_events(
                 self.brain.facts("group").get("location", {}).get("value", "San Francisco"),
-                tastes or "hanging out", group_id=self.group_id,
+                topic or tastes or "hanging out", when, group_id=self.group_id,
             )
         cands = estimator.candidates(self.brain, activity, events)
         # Step 2 for events: availability is a given. Drop events we know too few people can make;
@@ -149,9 +168,9 @@ class Bot:
         return {k: best[k] for k in ("option", "p_accept", "satisfaction", "p_success", "day", "start", "minutes", "url") if k in best}
 
     @staticmethod
-    def _with_link(text: str, activity: str | None, best: dict | None) -> str:
-        """Every event proposal carries its link, or says plainly that there isn't one."""
-        if activity != "event" and interests.detect(text) != "event":
+    def _with_link(text: str, activity: str | None, best: dict | None, reason: str = "propose") -> str:
+        """Every event proposal carries its link, or says plainly that there isn't one. Other chat is left alone."""
+        if reason != "propose" or (activity != "event" and (best or {}).get("activity") != "event"):
             return text
         if re.search(r"https?://", text) or "no link available" in text.lower():
             return text
