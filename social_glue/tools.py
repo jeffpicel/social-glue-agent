@@ -3,7 +3,9 @@ import hashlib
 import json
 import os
 import re
+from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 CACHE = Path("cache/events")
 
@@ -14,25 +16,44 @@ FALLBACK = [
 ]
 
 
-LISTING = re.compile(r"/explore|/discover|/d/|/calendar|/search|/events/?$|things to do|events in|best events", re.I)
+LISTING = re.compile(r"/explore|/discover|/d/|/calendar|/search|/events/?$|things to do|events in|best events|app store|events calendar|/e/to/", re.I)
+
+
+MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+EVENT_DATE = re.compile(r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})(?:st|nd|rd|th)?(?:,? (20\d\d))?", re.I)
+
+
+def _is_past(text: str, today: date) -> bool:
+    """True if the first date the listing names is before today (no year means this year)."""
+    m = EVENT_DATE.search(text)
+    if not m:
+        return False
+    try:
+        d = date(int(m.group(3) or today.year), MONTHS.index(m.group(1).lower()) + 1, int(m.group(2)))
+    except ValueError:
+        return False
+    return d < today
 
 
 def _serper(query: str) -> list[dict]:
     """Google results via serper.dev, single event pages only (listing pages make the group do the work)."""
     import requests
 
+    today = date.today()
     q = query.split(" (")[0] + " (site:lu.ma OR site:partiful.com/e OR site:eventbrite.com/e)"
     r = requests.post("https://google.serper.dev/search", json={"q": q, "num": 20},
                       headers={"X-API-KEY": os.environ["SERPER_API_KEY"]}, timeout=10)
     r.raise_for_status()
-    organic = [h for h in r.json().get("organic", []) if not LISTING.search(h.get("link", "") + " " + h.get("title", ""))][:5]
+    organic = [h for h in r.json().get("organic", []) if not LISTING.search(h.get("link", "") + " " + h.get("title", ""))
+               and not _is_past(" ".join(h.get(k) or "" for k in ("date", "title", "snippet")), today)
+               and urlparse(h.get("link", "")).path.strip("/")][:5]
     return [{"title": h.get("title", ""), "url": h.get("link", ""), "snippet": " ".join(x for x in (h.get("date"), h.get("snippet")) if x)} for h in organic]
 
 
 def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
     query = f"events in {city} {when} for people into {interests} (partiful OR lu.ma OR eventbrite) date time"
     CACHE.mkdir(parents=True, exist_ok=True)
-    path = CACHE / (hashlib.sha1(("v2" + query).encode()).hexdigest()[:12] + ".json")
+    path = CACHE / (hashlib.sha1(("v3" + query).encode()).hexdigest()[:12] + ".json")
     if path.exists():
         return json.loads(path.read_text())
     results = FALLBACK
