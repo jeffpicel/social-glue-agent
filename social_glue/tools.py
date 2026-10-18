@@ -84,7 +84,8 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
                     err = e
             if not hits and err:
                 raise err
-            results = [{"title": h.get("title", ""), "url": h.get("url", ""), "snippet": (h.get("snippets") or [h.get("description", "")])[0]} for h in hits] or FALLBACK
+            results = [{"title": h.get("title", ""), "url": h.get("url", ""), "snippet": (h.get("snippets") or [h.get("description", "")])[0]} for h in hits
+                       if not LISTING.search(h.get("url", "") + " " + h.get("title", ""))] or FALLBACK
         except Exception as e:  # noqa: BLE001 - demo must not crash on search
             print(f"[you.com] falling back to canned events: {e}")
             return FALLBACK
