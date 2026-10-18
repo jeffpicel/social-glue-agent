@@ -10,7 +10,10 @@ from social_glue.agents import curator, estimator, governor, interests, listener
 from social_glue.tools import search_events
 from social_glue.brain import Brain
 
-PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
+# "5 event picks", "a few options", "some ideas": answer with several proposals, one message each.
+MULTI = re.compile(r"\b([2-9])\s+(?:\w+\s+)?(?:picks|options|ideas|events|choices|suggestions)\b|\ba few\b|\bsome (?:options|ideas|picks)\b|\boptions\b", re.I)
+WORDS = {"two": "2", "three": "3", "four": "4", "five": "5"}
+PLAN_ASK = re.compile(r"\b(plan|propose|proposals?|picks?|options|recommend\w*|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
 
 
 class Bot:
@@ -28,22 +31,17 @@ class Bot:
     def meetups(self) -> list[dict]:
         return [{"activity": b["activity"], "ts": b["ts"]} for b in self.history if b.get("confirmed")]
 
-    def on_message(self, msg: dict) -> str | None:
+    def on_message(self, msg: dict) -> str | list[str] | None:
         self.transcript.append(msg)
         if msg["name"].lower() not in self.brain.people():
             self.brain.write(msg["name"], {})  # every member gets a brain file, even before we know anything
         self.last_notes = curator.curate(self.brain, listener.listen(msg))
         open_items = {id(b) for b in self.history if not b.get("confirmed")}
         self.last_notes += tracker.on_reply(self.brain, msg, self.history)
-        just_confirmed = [b for b in self.history if b.get("confirmed") and id(b) in open_items]
         self.last_notes += tracker.on_rating(self.brain, msg, self.history)
         self.last_notes += values.learn(self.brain, msg["text"])
-        if just_confirmed:  # a plan just got enough yeses: send the invite instead of more chat
-            plan = just_confirmed[-1]
-            going = [n for n, yes in plan.get("voters", {}).items() if yes]
-            text = calendar.invite({**plan.get("estimate", {}), "option": plan.get("estimate", {}).get("option", plan["text"])}, msg["ts"], going)
-            if text:
-                return self._say(f"It's on! {text}", msg["ts"], "invite", plan.get("activity"), prompted=True)
+        if (invite := self._invite_if_confirmed(open_items, msg["ts"])):
+            return invite
         decision = governor.decide(self.brain, msg, self.history, self.transcript)
         if decision is None:
             return None
@@ -55,6 +53,12 @@ class Bot:
                 activity = max(sliders, key=lambda a: sliders[a]["level"])
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
         note, best = "", None
+        if (m := MULTI.search(re.sub(r"\b(two|three|four|five)\b", lambda w: WORDS[w.group(1)], msg["text"].lower()))):
+            sliders = interests.load(self.brain)
+            activity = interests.detect(msg["text"]) or activity or max(sliders, key=lambda a: sliders[a]["level"])
+            n = int(m.group(1)) if m.group(1) else 3
+            if (texts := self._propose_several(activity, min(n, 5), msg["ts"], recent)):
+                return texts
         if PLAN_ASK.search(msg["text"]) or reason == "ask":  # the reply governor may label a plan request any reason
             # A direct ask to plan skips the timer and its gates: propose the best option now, whatever the bar.
             sliders = interests.load(self.brain)
@@ -70,6 +74,41 @@ class Bot:
         if best:
             self.history[-1]["estimate"] = self._plan_details(best)
         return text
+
+    def on_rsvp(self, index: int, name: str, yes: bool, ts: str) -> str | None:
+        """A 👍/👎 on one specific proposal message. Returns the invite text if this vote confirmed it."""
+        if name.lower() not in self.brain.people():
+            self.brain.write(name, {})
+        open_items = {id(b) for b in self.history if not b.get("confirmed")}
+        text = "I'm in" if yes else "nah, can't do that one"
+        self.last_notes = tracker.vote(self.brain, self.history[index], {"name": name, "text": text, "ts": ts})
+        return self._invite_if_confirmed(open_items, ts)
+
+    def _invite_if_confirmed(self, open_items: set, ts: str) -> str | None:
+        """When a plan just got enough yeses, post the calendar invite (or the official event page)."""
+        just = [b for b in self.history if b.get("confirmed") and id(b) in open_items]
+        if not just:
+            return None
+        plan = just[-1]
+        going = [n for n, yes in plan.get("voters", {}).items() if yes]
+        text = calendar.invite({**plan.get("estimate", {}), "option": plan.get("estimate", {}).get("option", plan["text"])}, ts, going)
+        return self._say(f"It's on! {text}", ts, "invite", plan.get("activity"), prompted=True) if text else None
+
+    def _propose_several(self, activity: str, n: int, ts: str, recent: list[dict]) -> list[str]:
+        """Several distinct options, each its own proposal message so people can 👍/👎 them separately."""
+        ranked = self._ranked_candidates(activity)[:n]
+        texts = []
+        for i, c in enumerate(ranked, 1):
+            note = (f"They asked for {len(ranked)} options; this is option {i}. One or two short lines, no greeting. "
+                    f"Propose exactly this: {c['option']}." + self._availability_ask(c))
+            text = self._with_link(planner.plan(self.brain, "propose", recent, use_brain=self.use_brain, note=note, activity=activity), activity, c)
+            self._say(text, ts, "propose", activity, prompted=True)
+            self.history[-1]["estimate"] = self._plan_details(c)
+            texts.append(text)
+        if texts:
+            interests.mark(self.brain, activity, "last_proposed", ts)
+            self.last_notes.append(f"offered {len(texts)} {activity} options")
+        return texts
 
     def on_tick(self, now: str) -> str | None:
         """Called on a clock (e.g. hourly in Discord, nightly in the sim). The bot's only way to start things."""
@@ -107,6 +146,11 @@ class Bot:
     def _best_candidate(self, activity: str, penalty: float = 0.0, bar: float | None = None) -> dict | None:
         """Estimate every candidate for this activity; return the best if its chance of success clears the bar
         (value threshold plus the recency penalty, unless an explicit bar is given)."""
+        ranked = self._ranked_candidates(activity)
+        bar = values.threshold(values.load(self.brain)) + penalty if bar is None else bar
+        return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
+
+    def _ranked_candidates(self, activity: str) -> list[dict]:
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
@@ -115,9 +159,7 @@ class Bot:
         # Step 2 for events: availability is a given. Drop events we know too few people can make;
         # keep ones we lack data for, and ask about the time when proposing them.
         cands = [c for c in cands if c["activity"] != "event" or c["free"] >= min(2, c["known"])]
-        ranked = estimator.estimate(self.brain, cands)
-        bar = values.threshold(values.load(self.brain)) + penalty if bar is None else bar
-        return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
+        return estimator.estimate(self.brain, cands)
 
     @staticmethod
     def _plan_details(best: dict) -> dict:

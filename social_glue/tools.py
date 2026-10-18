@@ -16,7 +16,7 @@ FALLBACK = [
 ]
 
 
-LISTING = re.compile(r"/explore|/discover|/d/|/calendar|/search|/events/?$|things to do|events in|best events|app store|events calendar|/e/to/", re.I)
+LISTING = re.compile(r"/explore|/discover|/d/|/calendar|/search|/events/?$|things to do|events in|best events|app store|events calendar|/e/to/|instagram|birthday|bday|wedding|baby shower|o\.lu\.ma", re.I)
 
 
 MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
@@ -53,13 +53,13 @@ def _serper(query: str) -> list[dict]:
 def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
     query = f"events in {city} {when} for people into {interests} (partiful OR lu.ma OR eventbrite) date time"
     CACHE.mkdir(parents=True, exist_ok=True)
-    path = CACHE / (hashlib.sha1(("v3" + query).encode()).hexdigest()[:12] + ".json")
+    path = CACHE / (hashlib.sha1(("v4" + query).encode()).hexdigest()[:12] + ".json")
     if path.exists():
         return json.loads(path.read_text())
     results = FALLBACK
     if os.getenv("SERPER_API_KEY"):
         try:
-            hits = _serper(query)
+            hits = _serper(query) or _serper(f"things to do in {city} this week (partiful OR lu.ma OR eventbrite)")
             if hits:
                 path.write_text(json.dumps(hits, indent=2))
                 return hits

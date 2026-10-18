@@ -53,20 +53,19 @@ def bot_for(channel_id: int) -> Bot:
     return bots[channel_id]
 
 
-RSVP = {"👍": "I'm in", "👎": "nah, can't do that one"}
-proposals: dict[int, int] = {}  # bot message id -> channel id, for messages that take 👍/👎 votes
+RSVP = ("👍", "👎")
+proposals: dict[int, tuple[int, int]] = {}  # bot message id -> (channel id, index in bot.history) for 👍/👎 votes
 
 
-async def say(channel, text: str | None) -> None:
-    if not text:
-        return
-    sent = await channel.send(text[:2000])
-    bot = bots.get(channel.id)
-    last = bot.history[-1] if bot and bot.history else None
-    if last and last["text"] == text and last["kind"] in ("propose", "ask") and last.get("activity"):
-        proposals[sent.id] = channel.id
-        for emoji in RSVP:
-            await sent.add_reaction(emoji)
+async def say(channel, text: str | list[str] | None) -> None:
+    for t in ([text] if isinstance(text, str) else text or []):
+        sent = await channel.send(t[:2000])
+        bot = bots.get(channel.id)
+        idx = next((i for i in range(len(bot.history) - 1, -1, -1) if bot.history[i]["text"] == t), None) if bot else None
+        if idx is not None and bot.history[idx]["kind"] in ("propose", "ask") and bot.history[idx].get("activity"):
+            proposals[sent.id] = (channel.id, idx)
+            for emoji in RSVP:
+                await sent.add_reaction(emoji)
 
 
 @client.event
@@ -74,21 +73,20 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     """A 👍/👎 on a proposal is an RSVP: feed it to the bot as that person's yes/no reply."""
     if payload.user_id == client.user.id or payload.message_id not in proposals or str(payload.emoji) not in RSVP:
         return
-    channel_id = proposals[payload.message_id]
+    channel_id, idx = proposals[payload.message_id]
     member = payload.member or await client.fetch_user(payload.user_id)
     if member.bot:
         return
-    msg = {"name": member.display_name, "text": RSVP[str(payload.emoji)], "ts": now_iso()}
     bot = bot_for(channel_id)
     async with locks[channel_id]:
         try:
-            reply = await asyncio.to_thread(bot.on_message, msg)
+            reply = await asyncio.to_thread(bot.on_rsvp, idx, member.display_name, str(payload.emoji) == "👍", now_iso())
         except Exception:
             log.exception("rsvp failed")
             return
         for note in bot.last_notes:
             log.info("[brain %s] %s", channel_id, note)
-    if reply:  # includes the calendar invite when this tap confirmed the plan
+    if reply:  # the calendar invite, when this tap confirmed the plan
         await say(client.get_channel(channel_id), reply)
     elif any(n.startswith("confirmed") for n in bot.last_notes):
         await say(client.get_channel(channel_id), f"It's on! {', '.join(n for n in bot.last_notes if n.startswith('confirmed'))} 🎉")

@@ -35,6 +35,13 @@ def on_reply(brain: Brain, msg: dict, history: list[dict]) -> list[str]:
     item = _open_item(history)
     if not item or msg["ts"] <= item["ts"]:
         return []
+    return vote(brain, item, msg)
+
+
+def vote(brain: Brain, item: dict, msg: dict) -> list[str]:
+    """Apply one person's yes/no reply to a specific proposal (typed, or a 👍/👎 on that message)."""
+    if item.get("closed"):
+        return []
     yes, no = bool(YES.search(msg["text"])), bool(NO.search(msg["text"]))
     if not (yes or no) or msg["name"] in item.setdefault("voters", {}):
         return []
