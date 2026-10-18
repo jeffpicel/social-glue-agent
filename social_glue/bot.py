@@ -5,7 +5,7 @@
 import re
 from datetime import datetime
 
-from social_glue.agents import curator, estimator, governor, interests, listener, planner, tracker, values
+from social_glue.agents import curator, estimator, governor, interests, listener, planner, reservations, tracker, values
 from social_glue.tools import search_events
 from social_glue.brain import Brain
 
@@ -35,6 +35,9 @@ class Bot:
         self.last_notes += tracker.on_reply(self.brain, msg, self.history)
         self.last_notes += tracker.on_rating(self.brain, msg, self.history)
         self.last_notes += values.learn(self.brain, msg["text"])
+        if reservations.is_request(msg["text"]):
+            text = reservations.respond(self.brain, msg, self.transcript)
+            return self._say(text, msg["ts"], "reservation_search", None, prompted=True)
         decision = governor.decide(self.brain, msg, self.history, self.transcript)
         if decision is None:
             return None

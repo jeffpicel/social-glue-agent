@@ -2,7 +2,7 @@
 from social_glue import llm
 from social_glue.agents import interests
 from social_glue.brain import Brain
-from social_glue.tools import search_events
+from social_glue.tools import search_events, search_yelp_places
 
 SYSTEM = """You are Glue, a friendly bot in a friends' group chat that helps them actually hang out.
 Follow the playbook. Use only the brain facts given; don't invent facts about people.
@@ -13,6 +13,7 @@ Reason for speaking: {reason}. Activity: {activity}.
 - addressed: answer what was asked, briefly.
 - respond: answer the incoming message or react naturally and briefly. Stay relevant to what they said; don't turn ordinary chat into a planning pitch.
 When you propose an event that has a link, include the link.
+When Yelp venue candidates are provided, use one as a concrete place suggestion when it fits; include its Yelp link. Treat rating, price, category, and address as factual details, and do not invent opening hours or availability.
 Reply with just the chat message."""
 
 PROBE = {
@@ -35,7 +36,7 @@ def _last_day_mentioned(recent: list[dict]) -> list[str]:
     return []
 
 
-def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], recent: list[dict], use_brain: bool, note: str = "") -> str:
+def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], venues: list[dict], recent: list[dict], use_brain: bool, note: str = "") -> str:
     if reason == "respond":
         incoming = recent[-1] if recent else {"text": ""}
         text = incoming["text"].strip()
@@ -51,7 +52,8 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
             return "How about a long weekend cabin trip near Tahoe sometime this fall? Who'd be interested?"
         if activity == "event":
             event = events[0]["title"] if events else "a local live music night"
-            return f"How about checking out {event} together? Who'd be up for it?"
+            venue = f" at {venues[0]['title']} ({venues[0]['url']})" if venues else ""
+            return f"How about checking out {event}{venue} together? Who'd be up for it?"
         return "How about a relaxed 30-minute video call Sunday at 7pm? Who's in?"
     if reason == "probe":
         return PROBE[activity]
@@ -68,7 +70,8 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
             return "Long weekend getaway trip next month? Thinking a cabin near Tahoe, split costs. Who's in?"
         if activity == "event":
             ev = events[0]["title"] if events else "a show downtown"
-            return f"Event idea: {ev} this {day}. Who's in?"
+            venue = f" at {venues[0]['title']} ({venues[0]['url']})" if venues else ""
+            return f"Event idea: {ev}{venue} this {day}. Who's in?"
         if not days:
             return "How about a relaxed 30-minute video call Sunday at 7pm as a starting point? Who's in?"
         return f"Video call at 7pm this {day}? Looks like it works for everyone who's shared. Who's in?"
@@ -79,9 +82,18 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], r
 
 def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, note: str = "", activity: str | None = None) -> str:
     events = []
+    venues = []
     if reason in ("propose", "ask") and activity == "event":
         tastes = ", ".join(brain.facts(p)["interests"]["value"] for p in brain.people() if "interests" in brain.facts(p))
         events = search_events(brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")[:3]
+        try:
+            venues = search_yelp_places(
+                brain.facts("group").get("location", {}).get("value", "San Francisco"),
+                f"{tastes} event venue" if tastes else "live music events and venues",
+                limit=5,
+            )
+        except Exception as exc:  # noqa: BLE001 - Yelp is an optional source
+            print(f"[yelp] venue search failed: {type(exc).__name__}")
     sliders = interests.load(brain)
     context = brain.render() if use_brain else "\n".join(f"{m['name']}: {m['text']}" for m in recent)
     user = (
@@ -89,8 +101,9 @@ def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, 
         f"{'BRAIN' if use_brain else 'FULL TRANSCRIPT'}:\n{context}\n"
         f"Group interest levels: " + ", ".join(f"{a} {s['level']:.2f}" for a, s in sliders.items()) + "\n\n"
         f"EVENTS:\n" + "\n".join(f"- {e['title']}: {e['snippet']} {e.get('url', '')}".rstrip() for e in events) + "\n\n"
+        f"LOCAL VENUES FROM YELP:\n" + "\n".join(f"- {v['title']}: {v['snippet']} {v['url']}".rstrip() for v in venues) + "\n\n"
         f"LAST MESSAGES:\n" + "\n".join(f"{m['name']}: {m['text']}" for m in recent[-3:])
         + (f"\n\nNOTE: {note}" if note else "")
     )
     return llm.chat(SYSTEM.format(reason=reason, activity=activity or "any"), user, tier="strong",
-                    fake=lambda: _fake(brain, reason, activity, events, recent, use_brain, note))
+                    fake=lambda: _fake(brain, reason, activity, events, venues, recent, use_brain, note))
