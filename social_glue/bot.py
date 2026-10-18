@@ -7,7 +7,7 @@ from datetime import datetime
 
 from social_glue import calendar
 from social_glue.agents import curator, estimator, governor, interests, listener, planner, reservations, tracker, values
-from social_glue.tools import search_events
+from social_glue.tools import observe_chat_venues, observe_search_sources, search_events
 from social_glue.brain import Brain
 
 PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|ideas?|hang ?out|get together|meet ?up|something to do|(could|should|can) (we )?do|anything fun)\b", re.I)
@@ -30,6 +30,9 @@ class Bot:
 
     def on_message(self, msg: dict) -> str | None:
         self.transcript.append(msg)
+        observe_search_sources(msg)
+        city = self.brain.facts("group").get("location", {}).get("value", "San Francisco")
+        observe_chat_venues(msg, city)
         if msg["name"].lower() not in self.brain.people():
             self.brain.write(msg["name"], {})  # every member gets a brain file, even before we know anything
         self.last_notes = curator.curate(self.brain, listener.listen(msg))

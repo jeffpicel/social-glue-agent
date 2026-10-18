@@ -6,9 +6,43 @@ import re
 from difflib import SequenceMatcher
 from datetime import date
 from pathlib import Path
+from time import time
 from urllib.parse import urlparse
 
 CACHE = Path("cache/events")
+SOURCE_REGISTRY = CACHE.parent / "search_sources.json"
+EVENT_CACHE_TTL_SECONDS = 6 * 60 * 60
+SOURCE_DISCOVERY_INTERVAL = 3
+
+DEFAULT_EVENT_SOURCES = {
+    "lu.ma": "Luma",
+    "partiful.com": "Partiful",
+    "eventbrite.com": "Eventbrite",
+    "cerebralvalley.ai": "Cerebral Valley",
+    "sf.funcheap.com": "Funcheap",
+    "todaytix.com": "TodayTix",
+    "ticketmaster.com": "Ticketmaster",
+    "stubhub.com": "StubHub",
+    "vividseats.com": "Vivid Seats",
+}
+BLOCKED_EVENT_DOMAINS = {
+    "google.com", "bing.com", "facebook.com", "instagram.com", "youtube.com",
+    "tiktok.com", "reddit.com", "yelp.com", "wikipedia.org",
+}
+EVENT_PAGE_SIGNAL = re.compile(
+    r"\b(?:event|concert|show|ticket|festival|workshop|class|comedy|music|hackathon|"
+    r"theatre|theater|exhibition|tour|match|race|market|party|conference|meetup)\b",
+    re.I,
+)
+SOURCE_INTENT = re.compile(r"\b(?:search|check|look|find|use|try|add|include)\b.{0,50}\b(?:site|source|website|events?|tickets?)\b|\b(?:site|source|website)\b.{0,50}\b(?:search|check|use|try|add|include)\b", re.I)
+URL_IN_MESSAGE = re.compile(r"(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>]*)?", re.I)
+VENUE_CONTEXT = re.compile(r"\b(?:venue|venues|restaurant|restaurants|bar|bars|cafe|cafes|coffee shop|place|places|spot|spots|dinner|brunch|lunch|show|concert|event|theater|theatre|museum|club|eat)\b", re.I)
+VENUE_CACHE = CACHE.parent / "venues.json"
+VENUE_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
+VENUE_REFERENCE_DOMAINS = {
+    "yelp.com", "opentable.com", "resy.com", "google.com", "maps.google.com",
+    "instagram.com", "facebook.com", "tripadvisor.com", "foursquare.com",
+}
 
 FALLBACK = [
     {"title": "Sunday farmers market + live jazz", "url": "", "snippet": "Free, outdoors, 10am-2pm"},
@@ -36,69 +70,366 @@ def _is_past(text: str, today: date) -> bool:
     return d < today
 
 
-def _serper(query: str) -> list[dict]:
-    """Google results via serper.dev, single event pages only (listing pages make the group do the work)."""
+def _source_host(url: str) -> str:
+    host = urlparse(url).netloc.lower().split("@")[-1].split(":")[0]
+    return host.removeprefix("www.")
+
+
+def _known_source(host: str, sources: dict) -> str | None:
+    matches = [domain for domain in sources if host == domain or host.endswith("." + domain)]
+    return max(matches, key=len) if matches else None
+
+
+def _load_source_registry() -> dict:
+    CACHE.parent.mkdir(parents=True, exist_ok=True)
+    initial = {
+        "searches": 0,
+        "sources": {
+            domain: {"label": label, "enabled": True, "successes": 0, "last_seen": None}
+            for domain, label in DEFAULT_EVENT_SOURCES.items()
+        },
+        "candidates": {},
+    }
+    try:
+        state = json.loads(SOURCE_REGISTRY.read_text())
+        if (not isinstance(state, dict) or not isinstance(state.get("sources", {}), dict)
+                or not isinstance(state.get("candidates", {}), dict)):
+            return initial
+    except (OSError, json.JSONDecodeError):
+        return initial
+
+    state.setdefault("searches", 0)
+    state.setdefault("sources", {})
+    state.setdefault("candidates", {})
+    for domain, label in DEFAULT_EVENT_SOURCES.items():
+        state["sources"].setdefault(
+            domain, {"label": label, "enabled": True, "successes": 0, "last_seen": None}
+        )
+    return state
+
+
+def _write_source_registry(state: dict) -> None:
+    tmp = SOURCE_REGISTRY.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+    tmp.replace(SOURCE_REGISTRY)
+
+
+def observe_search_sources(message: dict) -> None:
+    """Review every incoming group message for event-search source links and update the registry."""
+    text = str(message.get("text", ""))
+    state = _load_source_registry()
+    state["messages_checked"] = int(state.get("messages_checked", 0)) + 1
+    state["last_message_checked"] = message.get("ts")
+    message_id = hashlib.sha1(
+        f"{message.get('name', '')}|{message.get('ts', '')}|{text}".encode()
+    ).hexdigest()[:16]
+    explicit_source_intent = bool(SOURCE_INTENT.search(text))
+
+    for raw_url in URL_IN_MESSAGE.findall(text):
+        url = raw_url.rstrip(".,!?;:)]}")
+        if not urlparse(url).scheme:
+            url = "https://" + url
+        host = _source_host(url)
+        if (urlparse(url).scheme != "https" or not host
+                or any(host == domain or host.endswith("." + domain) for domain in BLOCKED_EVENT_DOMAINS)
+                or _known_source(host, state["sources"])
+                or not (explicit_source_intent or EVENT_PAGE_SIGNAL.search(text + " " + url))):
+            continue
+
+        candidate = state["candidates"].setdefault(host, {
+            "label": host, "searches_seen": [], "messages_seen": [], "successes": 0,
+            "last_seen": date.today().isoformat(),
+        })
+        messages_seen = candidate.setdefault("messages_seen", [])
+        if message_id not in messages_seen:
+            messages_seen.append(message_id)
+        candidate["last_seen"] = date.today().isoformat()
+        # An explicit request to use a source is enough; incidental event links need repeat evidence.
+        if explicit_source_intent or len(messages_seen) >= 2:
+            state["sources"][host] = {
+                "label": candidate.get("label", host), "enabled": True,
+                "successes": int(candidate.get("successes", 0)),
+                "last_seen": candidate["last_seen"], "discovered": True,
+            }
+            del state["candidates"][host]
+
+    _write_source_registry(state)
+
+
+def _venue_cache_read() -> dict:
+    try:
+        venues = json.loads(VENUE_CACHE.read_text())
+        return venues if isinstance(venues, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _venue_search_hits(name: str, city: str) -> list[dict]:
+    """Look up an exact venue with configured public search providers, Serper first."""
+    query = f'"{name}" {city} official website venue'
+    hits = []
+    if os.getenv("SERPER_API_KEY"):
+        try:
+            import requests
+            response = requests.post(
+                "https://google.serper.dev/search", json={"q": query, "num": 10},
+                headers={"X-API-KEY": os.environ["SERPER_API_KEY"]}, timeout=8,
+            )
+            response.raise_for_status()
+            hits = response.json().get("organic", [])
+        except Exception:  # noqa: BLE001 - try You.com next
+            pass
+    key = os.getenv("YOU_API_KEY") or os.getenv("YDC_API_KEY")
+    if not hits and key:
+        try:
+            import requests
+            for endpoint in ("https://ydc-index.io/v1/search", "https://api.ydc-index.io/search"):
+                try:
+                    response = requests.get(endpoint, params={"query": query},
+                                            headers={"X-API-Key": key}, timeout=8)
+                    response.raise_for_status()
+                    body = response.json()
+                    hits = (body.get("results") or {}).get("web") or body.get("hits") or []
+                    if hits:
+                        break
+                except Exception:  # noqa: BLE001 - support both You.com API versions
+                    continue
+        except Exception:  # noqa: BLE001 - venue caching must not block chat handling
+            return []
+    return hits
+
+
+def _resolve_venue(name: str, city: str) -> dict:
+    hits = _venue_search_hits(name, city)
+    candidates = []
+    for hit in hits:
+        url = hit.get("link") or hit.get("url") or ""
+        parsed = urlparse(url)
+        host = _source_host(url)
+        if parsed.scheme != "https" or not host or not parsed.path.strip("/"):
+            continue
+        if any(host == domain or host.endswith("." + domain) for domain in VENUE_REFERENCE_DOMAINS):
+            kind = "reference"
+        else:
+            kind = "website_candidate"
+        candidates.append({
+            "title": hit.get("title", ""), "url": url,
+            "snippet": hit.get("snippet") or hit.get("description") or "", "kind": kind,
+        })
+    direct = next((item for item in candidates if item["kind"] == "website_candidate"), None)
+    if not candidates and os.getenv("YELP_API_KEY"):
+        try:
+            for place in search_yelp_places(city, name, limit=5):
+                similarity = SequenceMatcher(None, name.casefold(), place["title"].casefold()).ratio()
+                if similarity >= 0.55:
+                    candidates.append({
+                        "title": place["title"], "url": place["url"],
+                        "snippet": place["snippet"], "kind": "reference",
+                    })
+        except Exception:  # noqa: BLE001 - venue caching must not block chat handling
+            pass
+    return {
+        "website": direct["url"] if direct else None,
+        "website_title": direct["title"] if direct else None,
+        "references": candidates[:5],
+        "lookup_status": "found" if candidates else ("not_found" if hits else "pending"),
+    }
+
+
+def observe_chat_venues(message: dict, city: str = "San Francisco") -> None:
+    """Extract named venues mentioned in chat, look up their sites, and retain them locally."""
+    text = str(message.get("text", "")).strip()
+    # Most ordinary chat is skipped; venue-like wording or a multi-item list triggers extraction.
+    list_like = bool(
+        "," in text
+        or re.search(r"\b(?:let'?s|try|go to|check out|what about|maybe)\b[^.?!]{0,70}\b(?:and|or)\b", text, re.I)
+    )
+    if not text or not (VENUE_CONTEXT.search(text) or list_like):
+        return
+
+    from social_glue import llm
+    try:
+        extracted = llm.chat(
+            "Extract only specifically named real-world venues from this group-chat message. "
+            "A venue is a restaurant, bar, cafe, event space, museum, theater, club, or named event location. "
+            "Exclude people, cities, neighborhoods, generic categories, and hypothetical examples. "
+            "Return JSON as {\"venues\":[{\"name\":\"...\",\"city\":\"... or empty\"}]}; "
+            "return an empty list when no venue is named.",
+            f"GROUP LOCATION: {city}\nMESSAGE: {text}",
+            tier="fast", json_mode=True, fake=lambda: {"venues": []},
+        )
+    except Exception:  # noqa: BLE001 - extraction should never interrupt chat handling
+        return
+    entries = extracted.get("venues", []) if isinstance(extracted, dict) else []
+    if not isinstance(entries, list):
+        return
+
+    cache = _venue_cache_read()
+    now = time()
+    for entry in entries[:8]:
+        if isinstance(entry, str):
+            name, entry_city = entry.strip(), ""
+        elif isinstance(entry, dict):
+            name = str(entry.get("name", "")).strip()
+            entry_city = str(entry.get("city", "")).strip()
+        else:
+            continue
+        if not name or len(name) > 100:
+            continue
+        location = entry_city or city or "Unknown"
+        key = hashlib.sha1(f"{name.casefold()}|{location.casefold()}".encode()).hexdigest()[:16]
+        venue = cache.setdefault(key, {
+            "name": name, "city": location, "website": None, "website_title": None,
+            "references": [], "lookup_status": "pending", "mentions": 0,
+            "first_seen": message.get("ts"),
+        })
+        venue["mentions"] = int(venue.get("mentions", 0)) + 1
+        venue["last_seen"] = message.get("ts")
+        checked = float(venue.get("last_checked", 0) or 0)
+        if (not venue.get("website") and now - checked >= VENUE_CACHE_TTL_SECONDS
+                and (os.getenv("SERPER_API_KEY") or os.getenv("YOU_API_KEY")
+                     or os.getenv("YDC_API_KEY") or os.getenv("YELP_API_KEY"))):
+            venue.update(_resolve_venue(name, location))
+            venue["last_checked"] = now
+
+    VENUE_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = VENUE_CACHE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    tmp.replace(VENUE_CACHE)
+
+
+def _normalize_event_results(hits: list[dict], url_key: str, sources: dict, allow_new: bool) -> list[dict]:
+    today = date.today()
+    results, seen_urls = [], set()
+    for hit in hits:
+        url = hit.get(url_key, "")
+        parsed = urlparse(url)
+        host = _source_host(url)
+        path = parsed.path.strip("/")
+        title = hit.get("title", "")
+        snippets = hit.get("snippets") or []
+        snippet = hit.get("snippet") or (snippets[0] if snippets else hit.get("description", ""))
+        if (parsed.scheme != "https" or not host or not path
+                or any(host == domain or host.endswith("." + domain) for domain in BLOCKED_EVENT_DOMAINS)
+                or LISTING.search(url + " " + title)
+                or _is_past(" ".join(str(hit.get(k) or "") for k in ("date", "title", "snippet", "description")), today)
+                or url in seen_urls):
+            continue
+
+        known = _known_source(host, sources)
+        if not known and (not allow_new or not EVENT_PAGE_SIGNAL.search(f"{url} {title} {snippet}")):
+            continue
+        source_domain = known or host
+        label = (sources.get(source_domain) or {}).get("label") or source_domain
+        results.append({
+            "title": title,
+            "url": url,
+            "snippet": " ".join(str(x) for x in (hit.get("date"), snippet) if x),
+            "source": label,
+            "source_domain": source_domain,
+        })
+        seen_urls.add(url)
+        if len(results) == 5:
+            break
+    return results
+
+
+def _serper(query: str, source_domains: list[str] | None, sources: dict, allow_new: bool) -> list[dict]:
+    """Search event pages; periodic broad searches discover additional source domains."""
     import requests
 
-    today = date.today()
-    q = query.split(" (")[0] + (
-        " (site:lu.ma OR site:partiful.com/e OR site:eventbrite.com/e OR "
-        "site:events.cerebralvalley.ai/e OR site:cerebralvalley.ai/e OR site:sf.funcheap.com OR site:todaytix.com OR "
-        "site:ticketmaster.com/event OR site:stubhub.com OR site:vividseats.com)"
+    q = query
+    if source_domains:
+        q += " (" + " OR ".join(f"site:{domain}" for domain in source_domains) + ")"
+    response = requests.post(
+        "https://google.serper.dev/search", json={"q": q, "num": 20},
+        headers={"X-API-KEY": os.environ["SERPER_API_KEY"]}, timeout=10,
     )
-    r = requests.post("https://google.serper.dev/search", json={"q": q, "num": 20},
-                      headers={"X-API-KEY": os.environ["SERPER_API_KEY"]}, timeout=10)
-    r.raise_for_status()
-    organic = [h for h in r.json().get("organic", []) if not LISTING.search(h.get("link", "") + " " + h.get("title", ""))
-               and not _is_past(" ".join(h.get(k) or "" for k in ("date", "title", "snippet")), today)
-               and urlparse(h.get("link", "")).path.strip("/")][:5]
-    return [{"title": h.get("title", ""), "url": h.get("link", ""), "snippet": " ".join(x for x in (h.get("date"), h.get("snippet")) if x)} for h in organic]
+    response.raise_for_status()
+    return _normalize_event_results(response.json().get("organic", []), "link", sources, allow_new)
+
+
+def _record_event_sources(state: dict, results: list[dict], query: str) -> None:
+    query_id = hashlib.sha1(query.lower().encode()).hexdigest()[:12]
+    domains = {item.get("source_domain") for item in results if item.get("source_domain")}
+    now = date.today().isoformat()
+    for domain in domains:
+        if domain in state["sources"]:
+            source = state["sources"][domain]
+            source["successes"] = int(source.get("successes", 0)) + 1
+            source["last_seen"] = now
+            continue
+
+        candidate = state["candidates"].setdefault(domain, {
+            "label": domain, "searches_seen": [], "messages_seen": [], "successes": 0, "last_seen": now,
+        })
+        candidate.setdefault("messages_seen", [])
+        if query_id not in candidate["searches_seen"]:
+            candidate["searches_seen"].append(query_id)
+            candidate["successes"] = int(candidate.get("successes", 0)) + 1
+        candidate["last_seen"] = now
+        # Promote only after the domain returns event-like pages for two distinct queries.
+        if len(candidate["searches_seen"]) >= 2 or len(candidate["messages_seen"]) >= 2:
+            state["sources"][domain] = {
+                "label": candidate["label"], "enabled": True,
+                "successes": candidate["successes"], "last_seen": now,
+                "discovered": True,
+            }
+            del state["candidates"][domain]
 
 
 def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
-    query = (
-        f"events in {city} {when} for people into {interests} "
-        "(partiful OR lu.ma OR eventbrite OR cerebral valley OR funcheap OR todaytix OR ticketmaster OR stubhub OR vivid seats) date time"
+    state = _load_source_registry()
+    sources = state["sources"]
+    active = sorted(
+        ((domain, data) for domain, data in sources.items() if data.get("enabled", True)),
+        key=lambda pair: (-int(pair[1].get("successes", 0)), pair[0]),
     )
+    source_domains = [domain for domain, _ in active]
+    source_terms = " OR ".join(data.get("label", domain) for domain, data in active)
+    broad_discovery = (int(state.get("searches", 0)) + 1) % SOURCE_DISCOVERY_INTERVAL == 0
+    context = f"events in {city} {when} for people into {interests}"
+    query = f"{context} date time official event tickets" if broad_discovery else f"{context} ({source_terms}) date time"
+
     CACHE.mkdir(parents=True, exist_ok=True)
-    path = CACHE / (hashlib.sha1(("v6" + query).encode()).hexdigest()[:12] + ".json")
-    if path.exists():
+    cache_identity = json.dumps({"v": 7, "query": query, "sources": source_domains, "discovery": broad_discovery}, sort_keys=True)
+    path = CACHE / (hashlib.sha1(cache_identity.encode()).hexdigest()[:12] + ".json")
+    if path.exists() and time() - path.stat().st_mtime < EVENT_CACHE_TTL_SECONDS:
         return json.loads(path.read_text())
-    results = FALLBACK
+
+    results = []
     if os.getenv("SERPER_API_KEY"):
         try:
-            hits = _serper(query)
-            if hits:
-                path.write_text(json.dumps(hits, indent=2))
-                return hits
-        except Exception as e:  # noqa: BLE001 - fall through to You.com, then canned events
-            print(f"[serper] search failed: {e}")
-    key = os.getenv("YOU_API_KEY") or os.getenv("YDC_API_KEY")
-    if key:
-        try:
-            import requests
+            results = _serper(query, None if broad_discovery else source_domains, sources, broad_discovery)
+        except Exception as exc:  # noqa: BLE001 - fall through to You.com
+            print(f"[serper] event search failed: {type(exc).__name__}")
 
-            hits, err = [], None
-            # Newer keys only work on ydc-index.io/v1 (results.web); older ones on api.ydc-index.io (hits).
-            for url in ("https://ydc-index.io/v1/search", "https://api.ydc-index.io/search"):
-                try:
-                    r = requests.get(url, params={"query": query}, headers={"X-API-Key": key}, timeout=10)
-                    r.raise_for_status()
-                    body = r.json()
-                    hits = (body.get("results") or {}).get("web") or body.get("hits") or []
-                    hits = hits[:5]
+    key = os.getenv("YOU_API_KEY") or os.getenv("YDC_API_KEY")
+    if not results and key:
+        import requests
+
+        last_error = None
+        for endpoint in ("https://ydc-index.io/v1/search", "https://api.ydc-index.io/search"):
+            try:
+                response = requests.get(endpoint, params={"query": query}, headers={"X-API-Key": key}, timeout=10)
+                response.raise_for_status()
+                body = response.json()
+                hits = (body.get("results") or {}).get("web") or body.get("hits") or []
+                results = _normalize_event_results(hits, "url", sources, broad_discovery)
+                if results:
                     break
-                except Exception as e:  # noqa: BLE001
-                    err = e
-            if not hits and err:
-                raise err
-            results = [{"title": h.get("title", ""), "url": h.get("url", ""), "snippet": (h.get("snippets") or [h.get("description", "")])[0]} for h in hits] or FALLBACK
-        except Exception as e:  # noqa: BLE001 - demo must not crash on search
-            print(f"[you.com] falling back to canned events: {e}")
-            return FALLBACK
-        else:
-            path.write_text(json.dumps(results, indent=2))  # only cache real results
-    return results
+            except Exception as exc:  # noqa: BLE001 - support both You.com API versions
+                last_error = exc
+        if not results and last_error:
+            print(f"[you.com] event search failed: {type(last_error).__name__}")
+
+    state["searches"] = int(state.get("searches", 0)) + 1
+    _record_event_sources(state, results, query)
+    _write_source_registry(state)
+    if results:
+        path.write_text(json.dumps(results, indent=2))
+        return results
+    return FALLBACK
 
 
 def search_yelp_places(city: str, term: str, limit: int = 5) -> list[dict]:
