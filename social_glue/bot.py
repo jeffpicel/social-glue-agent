@@ -45,7 +45,7 @@ class Bot:
                 sliders = interests.load(self.brain)
                 activity = max(sliders, key=lambda a: sliders[a]["level"])
         recent = self.transcript if not self.use_brain else self.transcript[-3:]
-        note = ""
+        note, best = "", None
         if PLAN_ASK.search(msg["text"]) or reason == "ask":  # the reply governor may label a plan request any reason
             # A direct ask to plan skips the timer and its gates: propose the best option now, whatever the bar.
             sliders = interests.load(self.brain)
@@ -55,7 +55,7 @@ class Bot:
                 reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}." + self._availability_ask(best)
                 interests.mark(self.brain, activity, "last_proposed", msg["ts"])
                 self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
-        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.
         return self._say(text, msg["ts"], reason, activity, prompted=True)
 
@@ -84,7 +84,7 @@ class Bot:
             else:
                 note += f" Propose exactly this: {best['option']}." + self._availability_ask(best)
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
-        text = planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
         if reason in ("propose", "probe", "ask"):
             interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
@@ -106,6 +106,16 @@ class Bot:
         ranked = estimator.estimate(self.brain, cands)
         bar = values.threshold(values.load(self.brain)) + penalty if bar is None else bar
         return ranked[0] if ranked and ranked[0]["p_success"] >= bar else None
+
+    @staticmethod
+    def _with_link(text: str, activity: str | None, best: dict | None) -> str:
+        """Every event proposal carries its link, or says plainly that there isn't one."""
+        if activity != "event" and interests.detect(text) != "event":
+            return text
+        if re.search(r"https?://", text) or "no link available" in text.lower():
+            return text
+        url = (best or {}).get("url") if (best or {}).get("activity") == "event" else None
+        return f"{text}\n{url}" if url else f"{text}\n(No link available for this one.)"
 
     @staticmethod
     def _availability_ask(best: dict) -> str:
