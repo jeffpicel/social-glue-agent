@@ -11,7 +11,7 @@ import math
 
 from social_glue import llm
 from social_glue.agents import interests, listener, slots
-from social_glue.brain import Brain
+from social_glue.brain import Brain, as_text
 
 SYSTEM = """You predict how a friend group will react to hangout proposals.
 For each candidate, using only the brain facts, estimate:
@@ -74,7 +74,7 @@ def _heuristic(brain: Brain, c: dict) -> dict:
     else:
         fit = 0.7
     words = (c["option"] + " " + c.get("tags", "")).lower()
-    tastes = [brain.facts(p).get("interests", {}).get("value", "") for p in people]
+    tastes = [as_text(brain.facts(p).get("interests", {}).get("value", "")) for p in people]
     match = sum(1 for t in tastes if t and any(w in words for w in t.lower().replace(",", " ").split() if len(w) > 3)) / len(people)
     return {"p_accept": round(min(1.0, level * (0.4 + fit)), 3), "satisfaction": round(5 + 2.5 * level + 3 * match, 1)}
 

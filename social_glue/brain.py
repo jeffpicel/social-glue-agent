@@ -8,6 +8,11 @@ import json
 import re
 from pathlib import Path
 
+def as_text(value) -> str:
+    """Fact values are usually strings, but the live model sometimes returns lists."""
+    return ", ".join(map(str, value)) if isinstance(value, list) else str(value or "")
+
+
 FACTS_RE = re.compile(r"<!-- facts: (.*?) -->", re.S)
 
 DEFAULT_PLAYBOOK = """# Playbook

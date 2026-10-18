@@ -106,12 +106,14 @@ async def on_message(message: discord.Message):
     if message.author.bot or (ALLOWED and message.channel.id not in ALLOWED):
         return
     text = message.content
-    if text.startswith("!"):
-        await command(message, text)
+    bare = re.sub(r"^\s*<@!?\d+>\s*", "", text)  # "@GlueBot !brain" works too
+    if bare.startswith("!"):
+        await command(message, bare)
         return
     if client.user in message.mentions:  # "@Glue" arrives as <@id>; the governor looks for the word "glue"
         text = text.replace(f"<@{client.user.id}>", "@glue").replace(f"<@!{client.user.id}>", "@glue")
     msg = {"name": message.author.display_name, "text": text, "ts": now_iso()}
+    log.info("[in %s] %s: %s", message.channel.id, msg["name"], text)
     bot = bot_for(message.channel.id)
     async with locks[message.channel.id]:
         try:
@@ -121,6 +123,10 @@ async def on_message(message: discord.Message):
             return
         for note in bot.last_notes:
             log.info("[brain %s] %s", message.channel.id, note)
+        if bot.history and bot.history[-1]["ts"] == msg["ts"]:
+            h = bot.history[-1]
+            log.info("[decide %s] kind=%s activity=%s estimate=%s", message.channel.id, h["kind"], h["activity"], h.get("estimate"))
+    log.info("[out %s] %s", message.channel.id, reply)
     await say(message.channel, reply)
 
 
