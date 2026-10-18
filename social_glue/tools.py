@@ -37,7 +37,6 @@ EVENT_PAGE_SIGNAL = re.compile(
 SOURCE_INTENT = re.compile(r"\b(?:search|check|look|find|use|try|add|include)\b.{0,50}\b(?:site|source|website|events?|tickets?)\b|\b(?:site|source|website)\b.{0,50}\b(?:search|check|use|try|add|include)\b", re.I)
 URL_IN_MESSAGE = re.compile(r"(?:https?://)?(?:www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:/[^\s<>]*)?", re.I)
 VENUE_CONTEXT = re.compile(r"\b(?:venue|venues|restaurant|restaurants|bar|bars|cafe|cafes|coffee shop|place|places|spot|spots|dinner|brunch|lunch|show|concert|event|theater|theatre|museum|club|eat)\b", re.I)
-VENUE_CACHE = CACHE.parent / "venues.json"
 VENUE_CACHE_TTL_SECONDS = 30 * 24 * 60 * 60
 VENUE_REFERENCE_DOMAINS = {
     "yelp.com", "opentable.com", "resy.com", "google.com", "maps.google.com",
@@ -156,9 +155,14 @@ def observe_search_sources(message: dict) -> None:
     _write_source_registry(state)
 
 
-def _venue_cache_read() -> dict:
+def _venue_cache_path(group_id: str) -> Path:
+    group_key = hashlib.sha1(str(group_id).encode()).hexdigest()[:16]
+    return CACHE.parent / "groups" / group_key / "venues.json"
+
+
+def _venue_cache_read(path: Path) -> dict:
     try:
-        venues = json.loads(VENUE_CACHE.read_text())
+        venues = json.loads(path.read_text())
         return venues if isinstance(venues, dict) else {}
     except (OSError, json.JSONDecodeError):
         return {}
@@ -236,7 +240,7 @@ def _resolve_venue(name: str, city: str) -> dict:
     }
 
 
-def observe_chat_venues(message: dict, city: str = "San Francisco") -> None:
+def observe_chat_venues(message: dict, city: str = "San Francisco", group_id: str = "default") -> None:
     """Extract named venues mentioned in chat, look up their sites, and retain them locally."""
     text = str(message.get("text", "")).strip()
     # Most ordinary chat is skipped; venue-like wording or a multi-item list triggers extraction.
@@ -264,7 +268,8 @@ def observe_chat_venues(message: dict, city: str = "San Francisco") -> None:
     if not isinstance(entries, list):
         return
 
-    cache = _venue_cache_read()
+    cache_path = _venue_cache_path(group_id)
+    cache = _venue_cache_read(cache_path)
     now = time()
     for entry in entries[:8]:
         if isinstance(entry, str):
@@ -292,10 +297,35 @@ def observe_chat_venues(message: dict, city: str = "San Francisco") -> None:
             venue.update(_resolve_venue(name, location))
             venue["last_checked"] = now
 
-    VENUE_CACHE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = VENUE_CACHE.with_suffix(".tmp")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cache_path.with_suffix(".tmp")
     tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
-    tmp.replace(VENUE_CACHE)
+    tmp.replace(cache_path)
+
+
+def seed_chat_venues(group_id: str, venues: list[tuple[str, str]]) -> Path:
+    """Add a curated (venue, city) list to one group's cache and resolve links when configured."""
+    cache_path = _venue_cache_path(group_id)
+    cache = _venue_cache_read(cache_path)
+    now = time()
+    for name, city in venues:
+        key = hashlib.sha1(f"{name.casefold()}|{city.casefold()}".encode()).hexdigest()[:16]
+        venue = cache.setdefault(key, {
+            "name": name, "city": city, "website": None, "website_title": None,
+            "references": [], "lookup_status": "pending", "mentions": 0,
+            "first_seen": "seed", "seeded": True,
+        })
+        venue["seeded"] = True
+        venue["last_seen"] = "seed"
+        if not venue.get("website") and (os.getenv("SERPER_API_KEY") or os.getenv("YOU_API_KEY")
+                                          or os.getenv("YDC_API_KEY") or os.getenv("YELP_API_KEY")):
+            venue.update(_resolve_venue(name, city))
+            venue["last_checked"] = now
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cache_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    tmp.replace(cache_path)
+    return cache_path
 
 
 def _normalize_event_results(hits: list[dict], url_key: str, sources: dict, allow_new: bool) -> list[dict]:

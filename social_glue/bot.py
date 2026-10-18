@@ -16,9 +16,10 @@ PLAN_ASK = re.compile(r"\b(plan|propose|suggest|organi[sz]e|set up|schedule|idea
 class Bot:
     name = "Glue"
 
-    def __init__(self, brain_dir: str = "brain", use_brain: bool = True):
+    def __init__(self, brain_dir: str = "brain", use_brain: bool = True, group_id: str | None = None):
         self.brain = Brain(brain_dir)
         self.use_brain = use_brain
+        self.group_id = str(group_id or brain_dir)
         self.transcript: list[dict] = []
         self.history: list[dict] = []  # bot's own messages: {ts, kind, activity, prompted, text, voters, closed}
         self.last_notes: list[str] = []
@@ -32,7 +33,7 @@ class Bot:
         self.transcript.append(msg)
         observe_search_sources(msg)
         city = self.brain.facts("group").get("location", {}).get("value", "San Francisco")
-        observe_chat_venues(msg, city)
+        observe_chat_venues(msg, city, self.group_id)
         if msg["name"].lower() not in self.brain.people():
             self.brain.write(msg["name"], {})  # every member gets a brain file, even before we know anything
         self.last_notes = curator.curate(self.brain, listener.listen(msg))
