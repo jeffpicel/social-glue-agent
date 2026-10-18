@@ -11,6 +11,7 @@ from social_glue.brain import Brain
 from social_glue.agents import slots
 from social_glue.tools import (
     check_popular_times,
+    record_group_search,
     search_michelin_restaurants,
     search_restaurants,
     search_yelp_places,
@@ -27,7 +28,7 @@ def is_request(text: str) -> bool:
     return bool(REQUEST.search(text))
 
 
-def respond(brain: Brain, msg: dict, transcript: list[dict] | None = None) -> str:
+def respond(brain: Brain, msg: dict, transcript: list[dict] | None = None, group_id: str = "default") -> str:
     """Infer dinner details and only suggest venues with a checked typical crowd level."""
     request = msg["text"]
     group = brain.facts("group")
@@ -35,17 +36,20 @@ def respond(brain: Brain, msg: dict, transcript: list[dict] | None = None) -> st
     party_size = infer_party_size(brain, request)
     day, time, date_source, time_source = infer_date_and_time(brain, request, msg["ts"], transcript)
     search_request = f"{request}; {day.isoformat()} at {time}; party of {party_size}"
-    options = search_restaurants(city, search_request)
+    options = search_restaurants(city, search_request, group_id=group_id)
+    record_group_search(group_id, "restaurants", search_request, options, city)
     try:
         yelp_places = search_yelp_places(city, f"restaurants {request}", limit=5)
     except Exception as exc:  # noqa: BLE001 - Yelp is an optional discovery source
         print(f"[yelp] restaurant search failed: {type(exc).__name__}")
         yelp_places = []
+    record_group_search(group_id, "venues", f"restaurants {request}", yelp_places, city)
     try:
         michelin_places = search_michelin_restaurants(city, search_request, limit=5)
     except Exception as exc:  # noqa: BLE001 - Michelin search is an optional discovery source
         print(f"[michelin] restaurant search failed: {type(exc).__name__}")
         michelin_places = []
+    record_group_search(group_id, "restaurants", f"MICHELIN {search_request}", michelin_places, city)
     seen = {item["title"].casefold() for item in options}
     for item in yelp_places + michelin_places:
         if item["title"].casefold() not in seen:

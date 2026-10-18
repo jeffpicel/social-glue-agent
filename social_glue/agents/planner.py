@@ -2,7 +2,7 @@
 from social_glue import llm
 from social_glue.agents import interests
 from social_glue.brain import Brain
-from social_glue.tools import search_events, search_yelp_places
+from social_glue.tools import record_group_search, search_events, search_yelp_places
 
 SYSTEM = """You are Glue, a friendly bot in a friends' group chat that helps them actually hang out.
 Follow the playbook. Use only the brain facts given; don't invent facts about people.
@@ -80,18 +80,20 @@ def _fake(brain: Brain, reason: str, activity: str | None, events: list[dict], v
     return "On it! Tell me which days work and I'll find a time."
 
 
-def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, note: str = "", activity: str | None = None) -> str:
+def plan(brain: Brain, reason: str, recent: list[dict], use_brain: bool = True, note: str = "", activity: str | None = None, group_id: str = "default") -> str:
     events = []
     venues = []
     if reason in ("propose", "ask") and activity == "event":
         tastes = ", ".join(brain.facts(p)["interests"]["value"] for p in brain.people() if "interests" in brain.facts(p))
-        events = search_events(brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")[:3]
+        city = brain.facts("group").get("location", {}).get("value", "San Francisco")
+        events = search_events(city, tastes or "hanging out", group_id=group_id)[:3]
         try:
             venues = search_yelp_places(
-                brain.facts("group").get("location", {}).get("value", "San Francisco"),
+                city,
                 f"{tastes} event venue" if tastes else "live music events and venues",
                 limit=5,
             )
+            record_group_search(group_id, "venues", f"{tastes} event venue", venues, city)
         except Exception as exc:  # noqa: BLE001 - Yelp is an optional source
             print(f"[yelp] venue search failed: {type(exc).__name__}")
     sliders = interests.load(brain)

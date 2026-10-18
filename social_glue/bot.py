@@ -31,7 +31,7 @@ class Bot:
 
     def on_message(self, msg: dict) -> str | None:
         self.transcript.append(msg)
-        observe_search_sources(msg)
+        observe_search_sources(msg, self.group_id)
         city = self.brain.facts("group").get("location", {}).get("value", "San Francisco")
         observe_chat_venues(msg, city, self.group_id)
         if msg["name"].lower() not in self.brain.people():
@@ -43,7 +43,7 @@ class Bot:
         self.last_notes += tracker.on_rating(self.brain, msg, self.history)
         self.last_notes += values.learn(self.brain, msg["text"])
         if reservations.is_request(msg["text"]):
-            text = reservations.respond(self.brain, msg, self.transcript)
+            text = reservations.respond(self.brain, msg, self.transcript, self.group_id)
             return self._say(text, msg["ts"], "reservation_search", None, prompted=True)
         if just_confirmed:  # a plan just got enough yeses: send the invite instead of more chat
             plan = just_confirmed[-1]
@@ -71,7 +71,7 @@ class Bot:
                 reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}." + self._availability_ask(best)
                 interests.mark(self.brain, activity, "last_proposed", msg["ts"])
                 self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
-        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.
         self._say(text, msg["ts"], reason, activity, prompted=True)
         if best:
@@ -103,7 +103,7 @@ class Bot:
             else:
                 note += f" Propose exactly this: {best['option']}." + self._availability_ask(best)
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
-        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best)
         if reason in ("propose", "probe", "ask"):
             interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
@@ -117,7 +117,10 @@ class Bot:
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
-            events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
+            events = search_events(
+                self.brain.facts("group").get("location", {}).get("value", "San Francisco"),
+                tastes or "hanging out", group_id=self.group_id,
+            )
         cands = estimator.candidates(self.brain, activity, events)
         # Step 2 for events: availability is a given. Drop events we know too few people can make;
         # keep ones we lack data for, and ask about the time when proposing them.
