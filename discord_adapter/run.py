@@ -48,7 +48,7 @@ def now_iso() -> str:
 
 def bot_for(channel_id: int) -> Bot:
     if channel_id not in bots:
-        bots[channel_id] = Bot(str(BRAINS / str(channel_id)))
+        bots[channel_id] = Bot(str(BRAINS / str(channel_id)), group_id=str(channel_id))
         locks[channel_id] = asyncio.Lock()
     return bots[channel_id]
 
