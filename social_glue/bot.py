@@ -3,6 +3,7 @@
 - Bot.on_tick(now):    tracker (silence = weak no) -> governor.decide_idle (what's due: propose / probe) -> planner
 """
 import re
+import uuid
 from datetime import datetime
 
 from social_glue import calendar
@@ -19,11 +20,24 @@ class Bot:
     def __init__(self, brain_dir: str = "brain", use_brain: bool = True, group_id: str | None = None):
         self.brain = Brain(brain_dir)
         self.use_brain = use_brain
-        self.group_id = str(group_id or brain_dir)
+        self.group_id = str(group_id) if group_id is not None else self._persistent_group_id()
         self.transcript: list[dict] = []
         self.history: list[dict] = []  # bot's own messages: {ts, kind, activity, prompted, text, voters, closed}
         self.last_notes: list[str] = []
         self.decisions: list[dict] = []  # every timer decision and what blocked it (explains false negatives)
+
+    def _persistent_group_id(self) -> str:
+        """Use a generated ID that stays tied to this bot's brain directory across restarts."""
+        path = self.brain.root / ".group_id"
+        try:
+            group_id = path.read_text().strip()
+            if group_id:
+                return group_id
+        except OSError:
+            pass
+        group_id = str(uuid.uuid4())
+        path.write_text(group_id + "\n")
+        return group_id
 
     @property
     def meetups(self) -> list[dict]:
