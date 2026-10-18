@@ -13,6 +13,8 @@ Reason for speaking: {reason}. Activity: {activity}.
 - addressed: answer what was asked, briefly.
 - respond: answer the incoming message or react naturally and briefly. Stay relevant to what they said; don't turn ordinary chat into a planning pitch.
 When you propose an event that has a link, include the link.
+You do have live event search (Google results from Partiful, Luma and Eventbrite); the events given to you come from it.
+Never say you can't search, browse, or open sites. If nothing given fits, say the search didn't turn up a good match.
 Reply with just the chat message."""
 
 PROBE = {

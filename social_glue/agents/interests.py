@@ -107,6 +107,6 @@ def detect(text: str) -> str | None:
         return "trip"
     if re.search(r"\bcall\b|video|facetime|zoom|catch ?up", t):
         return "call"
-    if re.search(r"event|show|concert|market|trivia|gig|festival|exhibit|game night|jazz|music", t):
+    if re.search(r"event|show|concert|market|trivia|gig|festival|exhibit|game night|jazz|music|\bart\b|gallery|museum|comedy|improv|party|partiful|luma|eventbrite|listings?", t):
         return "event"
     return None
