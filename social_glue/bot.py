@@ -3,6 +3,7 @@
 - Bot.on_tick(now):    tracker (silence = weak no) -> governor.decide_idle (what's due: propose / probe) -> planner
 """
 import re
+import uuid
 from datetime import datetime
 
 from social_glue import calendar
@@ -19,11 +20,24 @@ class Bot:
     def __init__(self, brain_dir: str = "brain", use_brain: bool = True, group_id: str | None = None):
         self.brain = Brain(brain_dir)
         self.use_brain = use_brain
-        self.group_id = str(group_id or brain_dir)
+        self.group_id = str(group_id) if group_id is not None else self._persistent_group_id()
         self.transcript: list[dict] = []
         self.history: list[dict] = []  # bot's own messages: {ts, kind, activity, prompted, text, voters, closed}
         self.last_notes: list[str] = []
         self.decisions: list[dict] = []  # every timer decision and what blocked it (explains false negatives)
+
+    def _persistent_group_id(self) -> str:
+        """Use a generated ID that stays tied to this bot's brain directory across restarts."""
+        path = self.brain.root / ".group_id"
+        try:
+            group_id = path.read_text().strip()
+            if group_id:
+                return group_id
+        except OSError:
+            pass
+        group_id = str(uuid.uuid4())
+        path.write_text(group_id + "\n")
+        return group_id
 
     @property
     def meetups(self) -> list[dict]:
@@ -31,7 +45,7 @@ class Bot:
 
     def on_message(self, msg: dict) -> str | None:
         self.transcript.append(msg)
-        observe_search_sources(msg)
+        observe_search_sources(msg, self.group_id)
         city = self.brain.facts("group").get("location", {}).get("value", "San Francisco")
         observe_chat_venues(msg, city, self.group_id)
         if msg["name"].lower() not in self.brain.people():
@@ -43,7 +57,7 @@ class Bot:
         self.last_notes += tracker.on_rating(self.brain, msg, self.history)
         self.last_notes += values.learn(self.brain, msg["text"])
         if reservations.is_request(msg["text"]):
-            text = reservations.respond(self.brain, msg, self.transcript)
+            text = reservations.respond(self.brain, msg, self.transcript, self.group_id)
             return self._say(text, msg["ts"], "reservation_search", None, prompted=True)
         if just_confirmed:  # a plan just got enough yeses: send the invite instead of more chat
             plan = just_confirmed[-1]
@@ -71,7 +85,7 @@ class Bot:
                 reason, note = "propose", f"They asked you to plan something. Propose exactly this: {best['option']}." + self._availability_ask(best)
                 interests.mark(self.brain, activity, "last_proposed", msg["ts"])
                 self.last_notes.append(f"asked to plan: {best['option']} p_success {best['p_success']:.2f}")
-        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best)
         # A chat-path response is prompted by the incoming message, unlike a timer nudge.
         self._say(text, msg["ts"], reason, activity, prompted=True)
         if best:
@@ -103,7 +117,7 @@ class Bot:
             else:
                 note += f" Propose exactly this: {best['option']}." + self._availability_ask(best)
                 self.last_notes.append(f"estimate: {best['option']} p_accept {best['p_accept']:.2f}, satisfaction {best['satisfaction']:.1f}/10, p_success {best['p_success']:.2f}")
-        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity), activity, best)
+        text = self._with_link(planner.plan(self.brain, reason, recent, use_brain=self.use_brain, note=note, activity=activity, group_id=self.group_id), activity, best)
         if reason in ("propose", "probe", "ask"):
             interests.mark(self.brain, activity, "last_probe" if reason == "probe" else "last_proposed", now)
         self._say(text, now, reason, activity, prompted=False)
@@ -117,7 +131,10 @@ class Bot:
         events = []
         if activity == "event":
             tastes = ", ".join(self.brain.facts(p)["interests"]["value"] for p in self.brain.people() if "interests" in self.brain.facts(p))
-            events = search_events(self.brain.facts("group").get("location", {}).get("value", "San Francisco"), tastes or "hanging out")
+            events = search_events(
+                self.brain.facts("group").get("location", {}).get("value", "San Francisco"),
+                tastes or "hanging out", group_id=self.group_id,
+            )
         cands = estimator.candidates(self.brain, activity, events)
         # Step 2 for events: availability is a given. Drop events we know too few people can make;
         # keep ones we lack data for, and ask about the time when proposing them.

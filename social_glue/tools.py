@@ -9,8 +9,7 @@ from pathlib import Path
 from time import time
 from urllib.parse import urlparse
 
-CACHE = Path("cache/events")
-SOURCE_REGISTRY = CACHE.parent / "search_sources.json"
+CACHE_ROOT = Path("cache")
 EVENT_CACHE_TTL_SECONDS = 6 * 60 * 60
 SOURCE_DISCOVERY_INTERVAL = 3
 
@@ -79,8 +78,16 @@ def _known_source(host: str, sources: dict) -> str | None:
     return max(matches, key=len) if matches else None
 
 
-def _load_source_registry() -> dict:
-    CACHE.parent.mkdir(parents=True, exist_ok=True)
+def _group_cache_dir(group_id: str) -> Path:
+    group_key = hashlib.sha1(str(group_id).encode()).hexdigest()[:16]
+    return CACHE_ROOT / "groups" / group_key
+
+
+def _source_registry_path(group_id: str) -> Path:
+    return _group_cache_dir(group_id) / "search_sources.json"
+
+
+def _load_source_registry(group_id: str) -> dict:
     initial = {
         "searches": 0,
         "sources": {
@@ -90,7 +97,7 @@ def _load_source_registry() -> dict:
         "candidates": {},
     }
     try:
-        state = json.loads(SOURCE_REGISTRY.read_text())
+        state = json.loads(_source_registry_path(group_id).read_text())
         if (not isinstance(state, dict) or not isinstance(state.get("sources", {}), dict)
                 or not isinstance(state.get("candidates", {}), dict)):
             return initial
@@ -107,16 +114,18 @@ def _load_source_registry() -> dict:
     return state
 
 
-def _write_source_registry(state: dict) -> None:
-    tmp = SOURCE_REGISTRY.with_suffix(".tmp")
+def _write_source_registry(state: dict, group_id: str) -> None:
+    path = _source_registry_path(group_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-    tmp.replace(SOURCE_REGISTRY)
+    tmp.replace(path)
 
 
-def observe_search_sources(message: dict) -> None:
+def observe_search_sources(message: dict, group_id: str = "default") -> None:
     """Review every incoming group message for event-search source links and update the registry."""
     text = str(message.get("text", ""))
-    state = _load_source_registry()
+    state = _load_source_registry(group_id)
     state["messages_checked"] = int(state.get("messages_checked", 0)) + 1
     state["last_message_checked"] = message.get("ts")
     message_id = hashlib.sha1(
@@ -152,20 +161,48 @@ def observe_search_sources(message: dict) -> None:
             }
             del state["candidates"][host]
 
-    _write_source_registry(state)
+    _write_source_registry(state, group_id)
 
 
 def _venue_cache_path(group_id: str) -> Path:
-    group_key = hashlib.sha1(str(group_id).encode()).hexdigest()[:16]
-    return CACHE.parent / "groups" / group_key / "venues.json"
+    return _group_cache_dir(group_id) / "venues.json"
 
 
-def _venue_cache_read(path: Path) -> dict:
+def _empty_group_cache(group_id: str) -> dict:
+    return {
+        "schema_version": 1,
+        "group_key": hashlib.sha1(str(group_id).encode()).hexdigest()[:16],
+        "messages_checked": 0,
+        "last_message_at": None,
+        "venues": {},
+        "search_history": [],
+    }
+
+
+def _venue_cache_read(path: Path, group_id: str) -> dict:
     try:
-        venues = json.loads(path.read_text())
-        return venues if isinstance(venues, dict) else {}
+        cache = json.loads(path.read_text())
+        if not isinstance(cache, dict):
+            return _empty_group_cache(group_id)
+        # Migrate the earlier flat venue mapping to the group-scoped cache schema.
+        if "schema_version" not in cache:
+            cache = {**_empty_group_cache(group_id), "venues": cache}
+        cache.setdefault("schema_version", 1)
+        cache.setdefault("group_key", hashlib.sha1(str(group_id).encode()).hexdigest()[:16])
+        cache.setdefault("messages_checked", 0)
+        cache.setdefault("last_message_at", None)
+        cache.setdefault("venues", {})
+        cache.setdefault("search_history", [])
+        return cache
     except (OSError, json.JSONDecodeError):
-        return {}
+        return _empty_group_cache(group_id)
+
+
+def _write_group_cache(cache_path: Path, cache: dict) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = cache_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
+    tmp.replace(cache_path)
 
 
 def _venue_search_hits(name: str, city: str) -> list[dict]:
@@ -243,6 +280,12 @@ def _resolve_venue(name: str, city: str) -> dict:
 def observe_chat_venues(message: dict, city: str = "San Francisco", group_id: str = "default") -> None:
     """Extract named venues mentioned in chat, look up their sites, and retain them locally."""
     text = str(message.get("text", "")).strip()
+    cache_path = _venue_cache_path(group_id)
+    cache = _venue_cache_read(cache_path, group_id)
+    cache["messages_checked"] = int(cache.get("messages_checked", 0)) + 1
+    cache["last_message_at"] = message.get("ts")
+    _write_group_cache(cache_path, cache)
+
     # Most ordinary chat is skipped; venue-like wording or a multi-item list triggers extraction.
     list_like = bool(
         "," in text
@@ -268,8 +311,6 @@ def observe_chat_venues(message: dict, city: str = "San Francisco", group_id: st
     if not isinstance(entries, list):
         return
 
-    cache_path = _venue_cache_path(group_id)
-    cache = _venue_cache_read(cache_path)
     now = time()
     for entry in entries[:8]:
         if isinstance(entry, str):
@@ -283,7 +324,7 @@ def observe_chat_venues(message: dict, city: str = "San Francisco", group_id: st
             continue
         location = entry_city or city or "Unknown"
         key = hashlib.sha1(f"{name.casefold()}|{location.casefold()}".encode()).hexdigest()[:16]
-        venue = cache.setdefault(key, {
+        venue = cache["venues"].setdefault(key, {
             "name": name, "city": location, "website": None, "website_title": None,
             "references": [], "lookup_status": "pending", "mentions": 0,
             "first_seen": message.get("ts"),
@@ -296,36 +337,53 @@ def observe_chat_venues(message: dict, city: str = "San Francisco", group_id: st
                      or os.getenv("YDC_API_KEY") or os.getenv("YELP_API_KEY"))):
             venue.update(_resolve_venue(name, location))
             venue["last_checked"] = now
+            if venue.get("references"):
+                cache["search_history"].append({
+                    "date": date.today().isoformat(), "kind": "venue_lookup",
+                    "query": f'"{name}" {location} official website venue',
+                    "city": location, "results": venue["references"],
+                })
+                cache["search_history"] = cache["search_history"][-100:]
 
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cache_path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
-    tmp.replace(cache_path)
+    _write_group_cache(cache_path, cache)
 
 
-def seed_chat_venues(group_id: str, venues: list[tuple[str, str]]) -> Path:
-    """Add a curated (venue, city) list to one group's cache and resolve links when configured."""
+def record_group_search(
+    group_id: str, kind: str, query: str, results: list[dict], city: str = "San Francisco"
+) -> None:
+    """Persist a group's search result history and cache venue pages returned by place searches."""
     cache_path = _venue_cache_path(group_id)
-    cache = _venue_cache_read(cache_path)
-    now = time()
-    for name, city in venues:
-        key = hashlib.sha1(f"{name.casefold()}|{city.casefold()}".encode()).hexdigest()[:16]
-        venue = cache.setdefault(key, {
-            "name": name, "city": city, "website": None, "website_title": None,
-            "references": [], "lookup_status": "pending", "mentions": 0,
-            "first_seen": "seed", "seeded": True,
+    cache = _venue_cache_read(cache_path, group_id)
+    now = date.today().isoformat()
+    saved = [
+        {key: item.get(key) for key in ("title", "url", "snippet", "source") if item.get(key)}
+        for item in results[:10] if item.get("url")
+    ]
+    if saved:
+        cache["search_history"].append({
+            "date": now, "kind": kind, "query": query, "city": city, "results": saved,
         })
-        venue["seeded"] = True
-        venue["last_seen"] = "seed"
-        if not venue.get("website") and (os.getenv("SERPER_API_KEY") or os.getenv("YOU_API_KEY")
-                                          or os.getenv("YDC_API_KEY") or os.getenv("YELP_API_KEY")):
-            venue.update(_resolve_venue(name, city))
-            venue["last_checked"] = now
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = cache_path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n")
-    tmp.replace(cache_path)
-    return cache_path
+        cache["search_history"] = cache["search_history"][-100:]
+
+    if kind in ("venues", "restaurants"):
+        for item in results:
+            name, url = str(item.get("title", "")).strip(), item.get("url")
+            if not name or not url:
+                continue
+            key = hashlib.sha1(f"{name.casefold()}|{city.casefold()}".encode()).hexdigest()[:16]
+            venue = cache["venues"].setdefault(key, {
+                "name": name, "city": city, "website": None, "website_title": None,
+                "references": [], "lookup_status": "found", "mentions": 0,
+                "first_seen": now,
+            })
+            if url not in {ref.get("url") for ref in venue.get("references", [])}:
+                venue.setdefault("references", []).append({
+                    "title": name, "url": url, "snippet": item.get("snippet", ""),
+                    "kind": "reference", "source": item.get("source", kind),
+                })
+                venue["references"] = venue["references"][-10:]
+            venue["last_seen"] = now
+    _write_group_cache(cache_path, cache)
 
 
 def _normalize_event_results(hits: list[dict], url_key: str, sources: dict, allow_new: bool) -> list[dict]:
@@ -408,8 +466,8 @@ def _record_event_sources(state: dict, results: list[dict], query: str) -> None:
             del state["candidates"][domain]
 
 
-def search_events(city: str, interests: str, when: str = "this month") -> list[dict]:
-    state = _load_source_registry()
+def search_events(city: str, interests: str, when: str = "this month", group_id: str = "default") -> list[dict]:
+    state = _load_source_registry(group_id)
     sources = state["sources"]
     active = sorted(
         ((domain, data) for domain, data in sources.items() if data.get("enabled", True)),
@@ -421,11 +479,14 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
     context = f"events in {city} {when} for people into {interests}"
     query = f"{context} date time official event tickets" if broad_discovery else f"{context} ({source_terms}) date time"
 
-    CACHE.mkdir(parents=True, exist_ok=True)
+    cache = _group_cache_dir(group_id) / "events"
+    cache.mkdir(parents=True, exist_ok=True)
     cache_identity = json.dumps({"v": 7, "query": query, "sources": source_domains, "discovery": broad_discovery}, sort_keys=True)
-    path = CACHE / (hashlib.sha1(cache_identity.encode()).hexdigest()[:12] + ".json")
+    path = cache / (hashlib.sha1(cache_identity.encode()).hexdigest()[:12] + ".json")
     if path.exists() and time() - path.stat().st_mtime < EVENT_CACHE_TTL_SECONDS:
-        return json.loads(path.read_text())
+        results = json.loads(path.read_text())
+        record_group_search(group_id, "events", query, results, city)
+        return results
 
     results = []
     if os.getenv("SERPER_API_KEY"):
@@ -455,9 +516,10 @@ def search_events(city: str, interests: str, when: str = "this month") -> list[d
 
     state["searches"] = int(state.get("searches", 0)) + 1
     _record_event_sources(state, results, query)
-    _write_source_registry(state)
+    _write_source_registry(state, group_id)
     if results:
         path.write_text(json.dumps(results, indent=2))
+        record_group_search(group_id, "events", query, results, city)
         return results
     return FALLBACK
 
@@ -504,10 +566,10 @@ def search_yelp_places(city: str, term: str, limit: int = 5) -> list[dict]:
     return places
 
 
-def search_restaurants(city: str, request: str) -> list[dict]:
+def search_restaurants(city: str, request: str, group_id: str = "default") -> list[dict]:
     """Find individual Resy/OpenTable restaurant booking pages; this does not book a table."""
     query = f"restaurants in {city} {request} reservations (site:resy.com OR site:opentable.com)"
-    cache = Path("cache/restaurants")
+    cache = _group_cache_dir(group_id) / "restaurants"
     cache.mkdir(parents=True, exist_ok=True)
     path = cache / (hashlib.sha1(("v1" + query).encode()).hexdigest()[:12] + ".json")
     if path.exists():
